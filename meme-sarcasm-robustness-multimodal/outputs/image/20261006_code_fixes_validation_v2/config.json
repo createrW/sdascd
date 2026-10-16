@@ -1,0 +1,54 @@
+{
+  "model_name": "clip_vitb32_frozen",
+  "clip_model_id": "openai/clip-vit-base-patch32",
+  "clip_revision": "3d74acf",
+  "feature": "pooler_output",
+  "seed": 42,
+  "threshold": 0.5,
+  "loss": "weighted_cross_entropy",
+  "head": {
+    "hidden_dim": 0,
+    "dropout": 0.0
+  },
+  "optimizer": "adamw",
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "batch_size": 64,
+  "epochs": 30,
+  "run_id": "20261006_code_fixes_validation_v2",
+  "features_dir": "features\\20261006_code_fixes_validation_v2",
+  "feature_meta": {
+    "clip_model_id": "openai/clip-vit-base-patch32",
+    "clip_revision_requested": "3d74acf",
+    "clip_commit_resolved": null,
+    "feature": "pooler_output",
+    "torch": "2.11.0+cu128",
+    "transformers": "5.18.0",
+    "device": "cuda",
+    "limit": null,
+    "splits": {
+      "train": {
+        "n": 5593,
+        "dim": 768,
+        "seconds": 34.3,
+        "sha256": "76fab25a3105ac56ef0d8b3a30e8c96ed5172fc145354e63364f295a257b1cfb"
+      },
+      "validation": {
+        "n": 699,
+        "dim": 768,
+        "seconds": 4.3,
+        "sha256": "208a808df9eaed2cc5f30429c87a1fa3cc2094ff92a8be06a7e00bf8cb3675a7"
+      }
+    }
+  },
+  "class_weights": [
+    2.2809951060358893,
+    0.6403709640485459
+  ],
+  "device": "cuda",
+  "torch": "2.11.0+cu128",
+  "transformers": "5.18.0",
+  "best_epoch": 7,
+  "checkpoint": "checkpoints\\image\\20261006_code_fixes_validation_v2\\best.pt",
+  "command": "python -m src.image.train --features_dir features/20261006_code_fixes_validation_v2 --run_id 20261006_code_fixes_validation_v2"
+}

@@ -1,0 +1,16 @@
+{
+  "run_id": "20261016_distilbert_clip_seed42_reproduction_cpu",
+  "n": 64,
+  "device": "cpu",
+  "text_features_dir": "features/reproduction_distilbert_first_token",
+  "image_features_dir": "features/clip_vitb32_pooler_cpu",
+  "text_model": "/home/user/models/hf_local/distilbert-base-uncased",
+  "clip_model": "/home/user/models/hf_local/clip-vit-base-patch32",
+  "text_max_abs_diff": 2.384185791015625e-07,
+  "text_min_cosine": 0.9999998211860657,
+  "image_max_abs_diff": 0.0,
+  "image_min_cosine": 0.9999998211860657,
+  "probability_max_abs_diff": 6.407499313354492e-07,
+  "label_agreement": 1.0,
+  "passed": true
+}

@@ -1,0 +1,13 @@
+run_id,model_name,seed,macro_f1,accuracy,f1_0,f1_1,best_epoch,training_seconds
+20261016_clip_frozen_mlp_image_only_seed42,clip_frozen_mlp_image_only,42,0.556835,0.725322,0.283582,0.830088,29,20.54
+20261016_clip_frozen_mlp_image_only_seed43,clip_frozen_mlp_image_only,43,0.535171,0.72103,0.241245,0.829097,23,18.91
+20261016_clip_frozen_mlp_image_only_seed44,clip_frozen_mlp_image_only,44,0.545703,0.69671,0.283784,0.807623,19,19.01
+20261016_distilbert_clip_seed42,distilbert_clip_frozen,42,0.533637,0.656652,0.294118,0.773157,25,43.5
+20261016_distilbert_clip_frozen_seed43,distilbert_clip_frozen,43,0.531473,0.703863,0.247273,0.815672,27,42.74
+20261016_distilbert_clip_frozen_seed44,distilbert_clip_frozen,44,0.544058,0.685265,0.290323,0.797794,21,42.6
+20261016_distilbert_frozen_mlp_text_only_seed42,distilbert_frozen_mlp_text_only,42,0.490285,0.612303,0.240896,0.739673,9,28.02
+20261016_distilbert_frozen_mlp_text_only_seed43,distilbert_frozen_mlp_text_only,43,0.477149,0.592275,0.231806,0.722493,12,27.73
+20261016_distilbert_frozen_mlp_text_only_seed44,distilbert_frozen_mlp_text_only,44,0.491201,0.610873,0.244444,0.737958,11,27.66
+20261016_distilbert_meanpool_clip_frozen_seed42,distilbert_meanpool_clip_frozen,42,0.531094,0.692418,0.256055,0.806132,29,39.12
+20261016_distilbert_meanpool_clip_frozen_seed43,distilbert_meanpool_clip_frozen,43,0.524663,0.679542,0.253333,0.795993,28,41.74
+20261016_distilbert_meanpool_clip_frozen_seed44,distilbert_meanpool_clip_frozen,44,0.528159,0.695279,0.24735,0.808969,23,42.52

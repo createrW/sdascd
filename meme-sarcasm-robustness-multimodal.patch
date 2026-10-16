@@ -1,0 +1,2243 @@
+diff --git a/.gitignore b/.gitignore
+index 11a4529..6fd921a 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -66,3 +66,13 @@ outputs/image/20261006_code_fixes_validation_v2/*
+ !outputs/image/20261006_code_fixes_validation_v2/training_log.csv
+ !outputs/image/20261006_code_fixes_validation_v2/confusion_matrix_validation.png
+ external/
++
++# Multimodal reference runs (main + independent reproduction). Other runs, checkpoints, caches
++# and step logs are in Multimodal_Assets_20261016.zip (docs/Multimodal_Assets.md).
++logs/
++!outputs/multimodal/
++outputs/multimodal/*
++!outputs/multimodal/20261016_distilbert_clip_seed42/
++!outputs/multimodal/20261016_distilbert_clip_seed42/**
++!outputs/multimodal/20261016_distilbert_clip_seed42_reproduction_cpu/
++!outputs/multimodal/20261016_distilbert_clip_seed42_reproduction_cpu/**
+diff --git a/README.md b/README.md
+index 3df0f77..bd42f9a 100644
+--- a/README.md
++++ b/README.md
+@@ -8,6 +8,9 @@ CSCI 566 梗图讽刺二分类项目：文字模型 DistilBERT；图片模型使
+ 
+ | Goal / 目的 | Open / 查看 |
+ |---|---|
++| Multimodal results, ablations, review / 多模态结果、对照与人工核对 | [Team_Review/multimodal/README.md](Team_Review/multimodal/README.md) |
++| Multimodal pipeline and commands, DistilBERT text features / 多模态流程、命令与 DistilBERT 文字特征 | [src/multimodal/README.md](src/multimodal/README.md) |
++| Multimodal verification / 多模态检测记录 | [docs/Multimodal_Test_Results.md](docs/Multimodal_Test_Results.md) |
+ | Image results and 32 reviewed samples / 图片结果和 32 个人工检查样本 | [Team_Review/image/README.md](Team_Review/image/README.md) |
+ | Cached or complete image reproduction / 缓存复现或完整图片复现 | [docs/Image_Reproduction.md](docs/Image_Reproduction.md) |
+ | Latest clean-branch checks / 精简分支检测结果 | [docs/Image_Test_Results.md](docs/Image_Test_Results.md) |
+@@ -18,11 +21,15 @@ This branch keeps one final image reference run, three small classifier heads, a
+ 
+ 本分支保留一套最终图片 reference run、三个小型分类头和当前图片代码。完整 `image-baseline` 分支继续保留历史审计。数据集、特征缓存、下载的编码器和新实验输出不提交到 Git。Google Drive 资料已在本地准备，实际上传后补充下载链接。
+ 
++The multimodal additions keep two reference runs in Git: `outputs/multimodal/20261016_distilbert_clip_seed42` and its independent reproduction. Text feature caches, multimodal checkpoints, all other runs and step logs are packaged as zips; see [docs/Multimodal_Assets.md](docs/Multimodal_Assets.md).
++
++多模态部分在 Git 中保留两套参考实验：`outputs/multimodal/20261016_distilbert_clip_seed42` 及其独立复现。文字特征缓存、多模态 checkpoint、其余实验和逐步日志打包为 zip，见 [docs/Multimodal_Assets.md](docs/Multimodal_Assets.md)。
++
+ ## Status / 当前状态
+ 
+-Shared dataset validation and the image baseline are complete. The multimodal model and real-data forward smoke test are implemented; full multimodal caching, training, and evaluation are not yet implemented. This image branch retains the existing text and multimodal files from `main`.
++Shared dataset validation, the image baseline and the multimodal baseline are complete. The multimodal pipeline (frozen DistilBERT `[CLS]` + frozen CLIP `pooler_output`, L2, concat, MLP 1536-512-2) has text feature caching, training, evaluation, reproduction, an end-to-end check and a manual review, all run on CPU. Validation Macro-F1 is 0.5336 for seed 42 and 0.5364 ± 0.0067 over 3 seeds. The Text Group's DistilBERT classifier is not part of this branch.
+ 
+-共同数据验证与图片基线已完成。多模态模型和真实数据前向 smoke test 已实现，完整的多模态缓存、训练和评估尚未实现。本图片分支保留 `main` 的文字与多模态文件。
++共同数据验证、图片基线和多模态基线已完成。多模态流程（冻结 DistilBERT `[CLS]` + 冻结 CLIP `pooler_output`、L2、拼接、MLP 1536-512-2）包含文字特征缓存、训练、评估、复现、端到端检查和人工核对，全部在 CPU 上运行。Validation Macro-F1：seed 42 为 0.5336，3 个 seed 为 0.5364 ± 0.0067。文字组的 DistilBERT 分类器不在本分支中。
+ 
+ ## Environment / 环境
+ 
+@@ -62,6 +69,18 @@ Read [the image reproduction guide](docs/Image_Reproduction.md) for both cache-b
+ 
+ [图片复现说明](docs/Image_Reproduction.md)包含缓存快速复现和重新提取特征两种方式。编码器接收原始 RGB 梗图，使用 CLIP 官方缩放、中心裁剪与归一化，包含图中可见的文字像素；不故意遮挡文字。使用 768 维 `pooler_output` 和 768 到 2 的分类头，seed 42、阈值 0.5。最终 reference run 的 Validation Macro-F1 为 0.527606，准确率为 0.626609。
+ 
++## Multimodal baseline / 多模态基线
++
++Commands for text features, training, evaluation, reproduction and the end-to-end check are in [src/multimodal/README.md](src/multimodal/README.md); results are in [Team_Review/multimodal/README.md](Team_Review/multimodal/README.md). Minimal route with the image group's cache unzipped at the repository root:
++
++文字特征、训练、评估、复现与端到端检查的命令见 [src/multimodal/README.md](src/multimodal/README.md)，结果见 [Team_Review/multimodal/README.md](Team_Review/multimodal/README.md)。将图片组缓存解压到仓库根目录后的最简流程：
++
++```powershell
++python -m src.text.extract_features
++python -m src.multimodal.train --run_id 20261016_distilbert_clip_seed42_my_copy
++python -m scripts.verify_predictions outputs/multimodal/20261016_distilbert_clip_seed42_my_copy/predictions_validation.csv
++```
++
+ ## Multimodal smoke test / 多模态 smoke test
+ 
+ The existing smoke test uses the pinned public text revision `1c4513b2eedbda136f57676a34eea67aba266e5c` and image revision `3d74acf`. Its first run downloads the encoders locally. See [src/multimodal/README.md](src/multimodal/README.md).
+diff --git a/Team_Review/multimodal/README.md b/Team_Review/multimodal/README.md
+new file mode 100644
+index 0000000..9fdd823
+--- /dev/null
++++ b/Team_Review/multimodal/README.md
+@@ -0,0 +1,83 @@
++# Multimodal results and review / 多模态结果与核对
++
++Validation split only (699 samples), threshold 0.5, model selection by validation Macro-F1, weighted cross-entropy with train-only class weights (w0 = 2.281, w1 = 0.640). Test was not scored. All multimodal numbers were produced on CPU.
++
++仅 Validation（699 个样本）；阈值 0.5；按 Validation Macro-F1 选择模型；加权交叉熵，类别权重只来自 Train（w0 = 2.281，w1 = 0.640）。Test 未评分。所有多模态结果都在 CPU 上得到。
++
++## October 14 comparison table / 10月14日比较表
++
++| Model | Macro-F1 | Accuracy | F1 class 0 | F1 class 1 | Training time | Status |
++|---|---:|---:|---:|---:|---:|---|
++| Majority baseline (always 1) | 0.4349 | 0.7697 | 0.0000 | 0.8698 | N/A | done |
++| DistilBERT text-only | 0.4903* | 0.6123* | 0.2409* | 0.7397* | 28.0 s* | Text Group pipeline not delivered; *frozen-feature probe below |
++| CLIP image-only (image group, linear head) | 0.5276 | 0.6266 | 0.3113 | 0.7439 | 2.7 s (CUDA) | done (image group) |
++| **DistilBERT + CLIP multimodal** (`20261016_distilbert_clip_seed42`) | **0.5336** | **0.6567** | **0.2941** | **0.7732** | 43.5 s (CPU, head only) | done |
++
++*Text-only row: frozen DistilBERT `[CLS]` + the same MLP head (`configs/ablations/text_only.json`). It does not replace the Text Group's DistilBERT classifier. Training time excludes feature extraction (DistilBERT 83 s for all splits; CLIP ~3 min per 5.6k images on CPU).
++
++*文字行：冻结 DistilBERT `[CLS]` + 同样的 MLP 分类头（`configs/ablations/text_only.json`），不能代替文字组的 DistilBERT 分类器。训练时间不含特征提取（DistilBERT 全部划分 83 秒；CLIP 在 CPU 上每 5.6k 张约 3 分钟）。
++
++Main run / 主实验: confusion matrix `[[50, 111], [129, 409]]` (rows true 0/1, columns predicted 0/1), best epoch 25/30, validation loss 1.429. Files: [outputs/multimodal/20261016_distilbert_clip_seed42/](../../outputs/multimodal/20261016_distilbert_clip_seed42/).
++
++## Ablations and seeds (supplementary) / 对照实验与多 seed（补充）
++
++Same settings (MLP 512, dropout 0.2, AdamW 1e-3, batch 16, 30 epochs), image group cache for images. Per-run rows: [validation_runs.csv](validation_runs.csv).
++
++设置相同（MLP 512、dropout 0.2、AdamW 1e-3、batch 16、30 epochs），图片使用图片组缓存。逐次结果见 [validation_runs.csv](validation_runs.csv)。
++
++| Model / 模型 | Seeds 42, 43, 44 Macro-F1 | Mean ± std | Accuracy mean |
++|---|---|---:|---:|
++| DistilBERT [CLS] + CLIP (baseline) | 0.5336, 0.5315, 0.5441 | 0.5364 ± 0.0067 | 0.6819 |
++| DistilBERT mean pooling + CLIP | 0.5311, 0.5247, 0.5282 | 0.5280 ± 0.0032 | 0.6891 |
++| CLIP only, same MLP | 0.5568, 0.5352, 0.5457 | 0.5459 ± 0.0108 | 0.7144 |
++| DistilBERT [CLS] only, same MLP | 0.4903, 0.4771, 0.4912 | 0.4862 ± 0.0079 | 0.6052 |
++
++## What the numbers say / 结论
++
++1. The pipeline works end to end and is reproducible: checkpoint reload and same-input reruns are identical; an independent rerun with re-extracted features stays within the 0.01 tolerance; raw-input inference through `MultimodalClassifier` matches the cached path to 6.4e-7 ([test report](../../docs/Multimodal_Test_Results.md)).
++2. Frozen DistilBERT text features carry little sarcasm signal here: text-only is 0.486, close to the majority baseline 0.435. The visual features carry more.
++3. Adding text to the image features does not help yet: the multimodal model (0.536 ± 0.007) is not better than the same MLP on CLIP alone (0.546 ± 0.011). With a 699-sample validation set and per-epoch Macro-F1 swinging between 0.42 and 0.53, differences of about 0.01 are within noise.
++4. The MLP overfits: train loss reaches 0.06 while validation loss rises from 0.69 to 1.7. The best epoch is the maximum of a noisy curve, so single-seed validation numbers are optimistic.
++5. Mean pooling is not better than [CLS], so the paper/HF-aligned [CLS] vector stays the baseline.
++
++1. 流程端到端可运行且可复现：checkpoint 重载与相同输入重跑完全一致；重新提取特征的独立复现落在 0.01 容差内；原始输入经 `MultimodalClassifier` 的推理与缓存路径相差 6.4e-7（[检测报告](../../docs/Multimodal_Test_Results.md)）。
++2. 冻结的 DistilBERT 文字特征在此几乎不含讽刺信号：纯文字 0.486，接近多数类基线 0.435；视觉特征信息更多。
++3. 目前加入文字没有带来提升：多模态（0.536 ± 0.007）不优于同一 MLP 只用 CLIP（0.546 ± 0.011）。Validation 只有 699 个样本，逐 epoch 的 Macro-F1 在 0.42–0.53 间波动，约 0.01 的差异属于噪声范围。
++4. MLP 过拟合：train loss 降到 0.06，validation loss 从 0.69 升到 1.7；最佳 epoch 是噪声曲线的最大值，单 seed 的 Validation 结果偏乐观。
++5. mean pooling 不比 [CLS] 好，因此保留与论文/HF 一致的 [CLS] 作为基线。
++
++This matches the proposal's question: a frozen-feature "multimodal" model can look competitive without using the text. The robustness tests after October 14 (image removal or substitution, OCR noise) will show which modality the model relies on.
++
++这正对应开题报告的问题：冻结特征的"多模态"模型可能在不真正利用文字的情况下得到看似不错的分数；10月14日之后的鲁棒性测试（去除/替换图片、OCR 噪声）将揭示模型依赖哪一种模态。
++
++## Manual review / 人工核对
++
++[review_grid.png](../../outputs/multimodal/20261016_distilbert_clip_seed42/review/review_grid.png) and [manual_review.csv](../../outputs/multimodal/20261016_distilbert_clip_seed42/review/manual_review.csv): 4 TP, 4 TN, 4 FP and 4 FN validation samples, selected with seed 42.
++
++- In every sample the image shows the caption stored for its `sample_id`, and the label equals `sarcasm_binary` in the metadata. The image-text-label triples are aligned.
++- 4 of the 16 labels are debatable: satire or political mockery labelled `not_sarcastic` (`validation_000524`, `000508`, `000544`), and absurd humour labelled `twisted_meaning` (`000300`). Label noise in this direction caps class-0 F1.
++- Captions include OCR errors and site watermarks (`makeameme.org`, `quickmeme.com`, `memecrunch.com`), which reach the text encoder unchanged.
++- `validation_000242` is offensive (blackface image).
++- The first pass was done by Claude, as noted in the CSV. A teammate should confirm it and fill in their name.
++
++- 每个样本的图片都显示其 `sample_id` 对应的文字，标签与元数据 `sarcasm_binary` 一致，图片—文字—标签对齐无误。
++- 16 个标签中 4 个存疑：讽刺新闻/政治嘲讽被标为 `not_sarcastic`（`validation_000524`、`000508`、`000544`），荒诞幽默被标为 `twisted_meaning`（`000300`）。这类标签噪声限制了 class 0 的 F1。
++- 文字包含 OCR 错误和网站水印（`makeameme.org`、`quickmeme.com`、`memecrunch.com`），会原样进入文字编码器。
++- `validation_000242` 含冒犯性内容（黑脸图片）。
++- 初步核对由 Claude 完成（CSV 中已注明），需要组员确认并填写姓名。
++
++## Known problems and unfinished tasks / 已知问题与未完成事项
++
++- A teammate still has to do the human second-member reproduction. The reproduction here was a separate run on fresh text and CPU image caches, by the same agent.
++- The encoders here were local copies of the pinned weights, because Hugging Face was blocked. On a machine with Hub access, re-running `python -m src.text.extract_features` and comparing with `scripts/compare_feature_caches.py` will confirm the DistilBERT copy (expected max diff ≈ 0).
++- Test is not scored. For the final evaluation use `features/clip_vitb32_pooler_cpu`, because the image group cache has no test split.
++- The image group's CUDA cache uses TF32 (see the test report). The 0.01 Macro-F1 tolerance absorbs it, but probability-level checks against that cache are looser than float precision.
++- Validation is small and noisy. Report the 3-seed mean for comparisons. Early stopping on validation loss or a lower learning rate would reduce overfitting; leave that for the post-Oct 14 work.
++- Checkpoints and caches are not in Git. They are in `Multimodal_Assets_20261016.zip` and `Text_Features_DistilBERT_20261016.zip` ([asset list](../../docs/Multimodal_Assets.md)).
++
++- 组员仍需完成人工的"第二名成员复现"；本次复现由同一 agent 用新的文字缓存和 CPU 图片缓存单独运行。
++- 由于无法访问 Hugging Face，本次编码器使用固定权重的本地副本；在能访问 Hub 的机器上重新运行 `python -m src.text.extract_features` 并用 `scripts/compare_feature_caches.py` 比较，即可确认 DistilBERT 副本（预期最大差异 ≈ 0）。
++- Test 未评分；最终评估需使用 `features/clip_vitb32_pooler_cpu`，因为图片组缓存不含 test。
++- 图片组 CUDA 缓存使用了 TF32（见检测报告）；0.01 的 Macro-F1 容差可以吸收，但针对该缓存的概率级检查达不到浮点精度。
++- Validation 规模小、噪声大，比较时请用 3 个 seed 的均值；按 validation loss 早停或降低学习率可以缓解过拟合，留待10月14日之后的工作。
++- Checkpoint 和缓存不在 Git 中，见 `Multimodal_Assets_20261016.zip` 和 `Text_Features_DistilBERT_20261016.zip`（[资料清单](../../docs/Multimodal_Assets.md)）。
+diff --git a/Team_Review/multimodal/validation_runs.csv b/Team_Review/multimodal/validation_runs.csv
+new file mode 100644
+index 0000000..725a220
+--- /dev/null
++++ b/Team_Review/multimodal/validation_runs.csv
+@@ -0,0 +1,13 @@
++run_id,model_name,seed,macro_f1,accuracy,f1_0,f1_1,best_epoch,training_seconds
++20261016_clip_frozen_mlp_image_only_seed42,clip_frozen_mlp_image_only,42,0.556835,0.725322,0.283582,0.830088,29,20.54
++20261016_clip_frozen_mlp_image_only_seed43,clip_frozen_mlp_image_only,43,0.535171,0.72103,0.241245,0.829097,23,18.91
++20261016_clip_frozen_mlp_image_only_seed44,clip_frozen_mlp_image_only,44,0.545703,0.69671,0.283784,0.807623,19,19.01
++20261016_distilbert_clip_seed42,distilbert_clip_frozen,42,0.533637,0.656652,0.294118,0.773157,25,43.5
++20261016_distilbert_clip_frozen_seed43,distilbert_clip_frozen,43,0.531473,0.703863,0.247273,0.815672,27,42.74
++20261016_distilbert_clip_frozen_seed44,distilbert_clip_frozen,44,0.544058,0.685265,0.290323,0.797794,21,42.6
++20261016_distilbert_frozen_mlp_text_only_seed42,distilbert_frozen_mlp_text_only,42,0.490285,0.612303,0.240896,0.739673,9,28.02
++20261016_distilbert_frozen_mlp_text_only_seed43,distilbert_frozen_mlp_text_only,43,0.477149,0.592275,0.231806,0.722493,12,27.73
++20261016_distilbert_frozen_mlp_text_only_seed44,distilbert_frozen_mlp_text_only,44,0.491201,0.610873,0.244444,0.737958,11,27.66
++20261016_distilbert_meanpool_clip_frozen_seed42,distilbert_meanpool_clip_frozen,42,0.531094,0.692418,0.256055,0.806132,29,39.12
++20261016_distilbert_meanpool_clip_frozen_seed43,distilbert_meanpool_clip_frozen,43,0.524663,0.679542,0.253333,0.795993,28,41.74
++20261016_distilbert_meanpool_clip_frozen_seed44,distilbert_meanpool_clip_frozen,44,0.528159,0.695279,0.24735,0.808969,23,42.52
+diff --git a/configs/ablations/image_only.json b/configs/ablations/image_only.json
+new file mode 100644
+index 0000000..51b237c
+--- /dev/null
++++ b/configs/ablations/image_only.json
+@@ -0,0 +1,28 @@
++{
++  "model_name": "clip_frozen_mlp_image_only",
++  "modalities": [
++    "image"
++  ],
++  "text_model_id": "distilbert/distilbert-base-uncased",
++  "text_revision": "1c4513b2eedbda136f57676a34eea67aba266e5c",
++  "text_feature": "first_token",
++  "text_max_length": 128,
++  "clip_model_id": "openai/clip-vit-base-patch32",
++  "clip_revision": "3d74acf",
++  "image_feature": "pooler_output",
++  "normalize_embeddings": true,
++  "fusion": {
++    "input_dim": 768,
++    "hidden_dim": 512,
++    "dropout": 0.2,
++    "num_classes": 2
++  },
++  "seed": 42,
++  "threshold": 0.5,
++  "loss": "weighted_cross_entropy",
++  "optimizer": "adamw",
++  "lr": 0.001,
++  "weight_decay": 0.0001,
++  "batch_size": 16,
++  "epochs": 30
++}
+diff --git a/configs/ablations/mean_pooling.json b/configs/ablations/mean_pooling.json
+new file mode 100644
+index 0000000..d4aa6e6
+--- /dev/null
++++ b/configs/ablations/mean_pooling.json
+@@ -0,0 +1,29 @@
++{
++  "model_name": "distilbert_meanpool_clip_frozen",
++  "modalities": [
++    "text",
++    "image"
++  ],
++  "text_model_id": "distilbert/distilbert-base-uncased",
++  "text_revision": "1c4513b2eedbda136f57676a34eea67aba266e5c",
++  "text_feature": "mean_pooling",
++  "text_max_length": 128,
++  "clip_model_id": "openai/clip-vit-base-patch32",
++  "clip_revision": "3d74acf",
++  "image_feature": "pooler_output",
++  "normalize_embeddings": true,
++  "fusion": {
++    "input_dim": 1536,
++    "hidden_dim": 512,
++    "dropout": 0.2,
++    "num_classes": 2
++  },
++  "seed": 42,
++  "threshold": 0.5,
++  "loss": "weighted_cross_entropy",
++  "optimizer": "adamw",
++  "lr": 0.001,
++  "weight_decay": 0.0001,
++  "batch_size": 16,
++  "epochs": 30
++}
+diff --git a/configs/ablations/text_only.json b/configs/ablations/text_only.json
+new file mode 100644
+index 0000000..f93dbc7
+--- /dev/null
++++ b/configs/ablations/text_only.json
+@@ -0,0 +1,28 @@
++{
++  "model_name": "distilbert_frozen_mlp_text_only",
++  "modalities": [
++    "text"
++  ],
++  "text_model_id": "distilbert/distilbert-base-uncased",
++  "text_revision": "1c4513b2eedbda136f57676a34eea67aba266e5c",
++  "text_feature": "first_token",
++  "text_max_length": 128,
++  "clip_model_id": "openai/clip-vit-base-patch32",
++  "clip_revision": "3d74acf",
++  "image_feature": "pooler_output",
++  "normalize_embeddings": true,
++  "fusion": {
++    "input_dim": 768,
++    "hidden_dim": 512,
++    "dropout": 0.2,
++    "num_classes": 2
++  },
++  "seed": 42,
++  "threshold": 0.5,
++  "loss": "weighted_cross_entropy",
++  "optimizer": "adamw",
++  "lr": 0.001,
++  "weight_decay": 0.0001,
++  "batch_size": 16,
++  "epochs": 30
++}
+diff --git a/configs/multimodal_baseline.json b/configs/multimodal_baseline.json
+index 5a6fa56..866686e 100644
+--- a/configs/multimodal_baseline.json
++++ b/configs/multimodal_baseline.json
+@@ -1,5 +1,9 @@
+ {
+   "model_name": "distilbert_clip_frozen",
++  "modalities": [
++    "text",
++    "image"
++  ],
+   "text_model_id": "distilbert/distilbert-base-uncased",
+   "text_revision": "1c4513b2eedbda136f57676a34eea67aba266e5c",
+   "text_feature": "first_token",
+diff --git a/docs/Multimodal_Assets.md b/docs/Multimodal_Assets.md
+new file mode 100644
+index 0000000..8b3d0a2
+--- /dev/null
++++ b/docs/Multimodal_Assets.md
+@@ -0,0 +1,34 @@
++# External multimodal assets / 多模态外部资料
++
++**Status: prepared locally; upload pending.** The CPU session that produced them could not reach `lfs.github.com` (network policy), so the two archives are not in the repository yet. Every file in them can be regenerated on CPU in about 6 minutes with the commands in [src/multimodal/README.md](../src/multimodal/README.md); after upload, the sizes and SHA-256 below must match.
++
++**状态：已在本地准备，尚未上传。** 生成它们的 CPU 会话无法访问 `lfs.github.com`（网络策略限制），两个压缩包暂未进入仓库。其中所有文件都可以按 [src/multimodal/README.md](../src/multimodal/README.md) 的命令在 CPU 上约 6 分钟重新生成；上传后大小与 SHA-256 应与下表一致。
++
++These files are not in Git. In the `sdascd` storage repository they are under `Meme_Project_updates/Model_ckpt/{text,multimodal}/` (Git LFS). They match the empty `Meme_Project/Model_ckpt/text/` and `Meme_Project/Model_ckpt/multimodal/` folders on the team Drive. Extract each archive **from the repository root**; the archives already contain the destination folders. They contain no dataset images and no encoder weights.
++
++这些文件不在 Git 中。它们位于 `sdascd` 存储仓库的 `Meme_Project_updates/Model_ckpt/{text,multimodal}/`（Git LFS），对应团队 Drive 中空着的 `Meme_Project/Model_ckpt/text/` 和 `Meme_Project/Model_ckpt/multimodal/`。请**从仓库根目录**解压，压缩包已包含目标目录；不含数据集图片和编码器权重。
++
++| Filename / 文件名 | Bytes / 字节 | Creates / 生成目录 | Contents / 内容 |
++|---|---:|---|---|
++| `Text_Features_DistilBERT_20261016.zip` | 39871951 | `features/distilbert_first_token/`, `features/distilbert_mean_pooling/` | frozen DistilBERT train/validation/test caches (768-d `[CLS]` and mean pooling) + `meta.json` |
++| `Multimodal_Assets_20261016.zip` | 56613660 | `features/clip_vitb32_pooler_cpu/`, `checkpoints/multimodal/`, `outputs/multimodal/`, `outputs/image/20261006_code_fixes_validation_v2_cpu_features_check/`, `logs/` | CPU CLIP cache incl. test; all 14 fusion-head checkpoints; all run folders (main, reproduction, rerun, ablations, seeds); image head on CPU features; step logs with timing and exit codes |
++
++## SHA-256
++
++```text
++2c6916f6d4fa575961d655332276aa9cdf1d1b663a489b9ad3e994409213200b  Text_Features_DistilBERT_20261016.zip
++3559ac223b6c8d754e3e6cb1ccba95a44bd02d46e05591d2a360a275ffce1860  Multimodal_Assets_20261016.zip
++```
++
++Fast route (no encoder download): unzip the image group's `Image_Features_CLIP_ViTB32_20261006.zip` and the two archives above at the repository root, then:
++
++快速路线（无需下载编码器）：在仓库根目录解压图片组的 `Image_Features_CLIP_ViTB32_20261006.zip` 和上面两个包，然后：
++
++```bash
++python -m src.multimodal.evaluate --run_id 20261016_distilbert_clip_seed42 --out_dir outputs/multimodal/quick_check
++python -m src.multimodal.train --run_id 20261016_distilbert_clip_seed42_my_reproduction
++```
++
++The cache loaders check every file's SHA-256, sample IDs, order and labels against the dataset metadata before use.
++
++缓存读取程序在使用前会核对每个文件的 SHA-256、sample ID、顺序和标签是否与数据集元数据一致。
+diff --git a/docs/Multimodal_Test_Results.md b/docs/Multimodal_Test_Results.md
+new file mode 100644
+index 0000000..1add93b
+--- /dev/null
++++ b/docs/Multimodal_Test_Results.md
+@@ -0,0 +1,29 @@
++# Multimodal verification / 多模态检测记录
++
++Verified on 2026-10-16 from the repository root. Environment: Linux, 4 vCPU, no GPU, Python 3.12.3, PyTorch 2.11.0, torchvision 0.26.0, Transformers 5.18.0. Dataset `MMSoc_Memotion_exported.zip` (SHA-256 `9d019fb4…330c`). Step logs are in `logs/` inside `Multimodal_Assets_20261016.zip` ([asset list](Multimodal_Assets.md)).
++
++2026-10-16 在仓库根目录检测。环境：Linux、4 vCPU、无 GPU、Python 3.12.3、PyTorch 2.11.0、torchvision 0.26.0、Transformers 5.18.0。数据集 `MMSoc_Memotion_exported.zip`（SHA-256 `9d019fb4…330c`）。逐步日志在 `Multimodal_Assets_20261016.zip` 的 `logs/` 中（[资料清单](Multimodal_Assets.md)）。
++
++| Check / 检查 | Result / 结果 |
++|---|---|
++| Dataset / 数据集 | `DATASET OK`: 5,593 / 699 / 700 rows, train labels 1,226 / 4,367, all 6,992 images readable |
++| Image group cache / 图片组缓存 | `Image_Features_CLIP_ViTB32_20261006.zip` SHA-256 matches the manifest; cache checks (IDs, order, labels, dims, hashes) pass |
++| Text extraction / 文字特征提取 | train 67.0 s, validation 7.6 s, test 8.3 s on CPU; 768-d, finite; `[NO_TEXT]` 1 train / 3 test; >128 tokens 4 train / 1 test; median 20 tokens |
++| Text re-extraction / 文字特征重提取 | fresh extraction into new folders is bit-identical on all three splits (max abs diff 0) |
++| CLIP on CPU vs image group CUDA cache / CPU 与 CUDA 图片特征 | mean cosine 0.99997 (train and validation); mean abs diff 1.8e-3 (feature mean abs 0.73); min cosine 0.9815 (`train_004233`), 0.9854 (`validation_000550`) |
++| Cause of that gap / 差异原因 | Rounding the patch-embedding convolution to TF32 (PyTorch's CUDA default `cudnn.allow_tf32=True`) reproduces the CUDA cache: first 64 validation images mean abs diff 1.7e-3 -> 2.9e-5; the six worst images cosine -> 1.00000. Weights and preprocessing are identical; the CUDA cache is the approximate one. |
++| Image head on CPU features / 图片分类头使用 CPU 特征 | image group's final head: Macro-F1 0.528634 vs reported 0.527606 (diff 0.0010, within D11) |
++| Unit tests / 单元测试 | `tests/test_multimodal_pipeline.py`: 9/9 pass. Image suite: 15/16 pass; `test_reproduction_script_requires_dataset_and_one_cache_mode` needs `powershell`, which Linux does not have (not related to this change) |
++| Smoke test / Smoke test | text (2, 768), image (2, 768), fused (2, 1536), logits (2, 2); `MULTIMODAL SMOKE TEST OK` |
++| Main run / 主实验 | `20261016_distilbert_clip_seed42`: Macro-F1 0.533637, accuracy 0.656652, best epoch 25/30, 43.5 s; `PREDICTIONS OK` (699 rows) |
++| Checkpoint reload / Checkpoint 重载 | identical metrics and prediction CSV (tolerance 0) |
++| Same-input rerun / 相同输入重跑 | `..._rerun_same_inputs`: identical metrics and predictions (CPU training is deterministic) |
++| Independent reproduction / 独立复现 | fresh text cache + CPU image cache: Macro-F1 0.543468 vs 0.533637, diff 0.009831 <= 0.01 -> `REPRODUCTION OK` (best epoch 29 instead of 25; margin is small) |
++| End-to-end, CPU caches / 端到端（CPU 缓存） | 64 validation samples through `MultimodalClassifier` from raw text and images: text diff 2.4e-7, image diff 0, probability diff 6.4e-7, labels 64/64 -> `END-TO-END CHECK OK` |
++| End-to-end, main run / 端到端（主实验） | same check against the CUDA-cache head: labels 64/64 agree, but probability diff 0.0131 > 0.01 because of `validation_000550` (TF32 gap above) -> reported as `FAILED` at that tolerance; not hidden or loosened |
++| Manual review / 人工核对 | 16 validation samples (4 TP/TN/FP/FN): every image shows the caption stored for its `sample_id`; 4 labels debatable (listed in the CSV) |
++| Test split / Test | not scored |
++
++Recommendation for future CUDA extraction: set `torch.backends.cudnn.allow_tf32 = False` (and `torch.backends.cuda.matmul.allow_tf32 = False`) so CPU, MPS and CUDA caches agree to float precision. This change was not made to the image group's code.
++
++对今后 CUDA 提取的建议：设置 `torch.backends.cudnn.allow_tf32 = False`（以及 `torch.backends.cuda.matmul.allow_tf32 = False`），使 CPU、MPS、CUDA 缓存达到浮点精度一致。本次未修改图片组代码。
+diff --git a/docs/decisions.md b/docs/decisions.md
+index c3040e5..52ea567 100644
+--- a/docs/decisions.md
++++ b/docs/decisions.md
+@@ -20,3 +20,16 @@ Each group appends its own entries; shared ones affect everyone.
+ | D11 | Reproduction passes if validation Macro-F1 differs by <= 0.01 | CPU / CUDA / MPS give ~1e-4 feature differences, so exact equality is not expected | all |
+ | D12 | Shared metric code in `src/common/metrics.py`; format check in `scripts/verify_predictions.py` | one implementation for the three groups (README 9.5) | all |
+ | D13 | Multimodal baseline uses normalized DistilBERT first-token feature (768-d) and the image group's normalized CLIP `pooler_output` (768-d), concatenated to 1536-d before a `1536 -> 512 -> 2` MLP | matches the fixed README model revisions, preserves both modality representations, and confirms the image/multimodal interface | image, multimodal |
++
++## 2026-10-16 · multimodal group (CPU run)
++
++| # | decision | why | affects |
++|---|---|---|---|
++| D14 | Text feature = final-layer `[CLS]` state `last_hidden_state[:, 0]` of frozen `DistilBertModel` (768-d), cached raw; L2 normalization happens inside the fusion head | DistilBERT has no pooler (Sanh et al., 2019); HF `DistilBertForSequenceClassification` classifies from this vector; confirms D13 | text, multimodal |
++| D15 | Masked mean pooling is cached alongside as an ablation only | standard frozen-encoder sentence vector; 3-seed validation Macro-F1 0.5280 vs 0.5364 for [CLS], so the baseline is unchanged | multimodal |
++| D16 | Tokenization: the model's uncased WordPiece, `[CLS] ... [SEP]`, truncation at 128, padding to the batch maximum with `attention_mask`; `[NO_TEXT]` is encoded as ordinary text | README 4.1 / 3.4; 4 train + 1 test captions exceed 128 tokens | text, multimodal |
++| D17 | The fusion MLP trains on cached features (`FusionHead`); its `classifier.*` weights load unchanged into `MultimodalClassifier` | encoders are frozen; end-to-end check matches to 6.4e-7 | multimodal |
++| D18 | Multimodal baseline images = the image group's reference cache (train/validation); test and reproduction use a CPU re-extraction with the same weights (`features/clip_vitb32_pooler_cpu`) | reuse the agreed features; the cache has no test split | image, multimodal |
++| D19 | The image group's CUDA cache differs from float32 by TF32 in the patch-embedding convolution (mean cosine 0.99997, min 0.981); downstream Macro-F1 differences stay within D11. Suggest `cudnn.allow_tf32 = False` for future CUDA extraction | explained exactly by TF32 emulation; see docs/Multimodal_Test_Results.md | image, multimodal |
++| D20 | Machines without Hugging Face access may pass `--model_dir` / `--text_model_dir` / `--clip_model_dir` with a local copy of the pinned weights; the source and weight hash are recorded in each cache `meta.json` | this CPU environment blocked huggingface.co; default behaviour unchanged | all |
++| D21 | Ablations (text only, image only, mean pooling) and seeds 43/44 are supplementary and selected on validation only; Test not scored | README 3.2 / 5.1 | multimodal |
+diff --git a/docs/experiment_log.md b/docs/experiment_log.md
+index 49dd5c8..3177aa2 100644
+--- a/docs/experiment_log.md
++++ b/docs/experiment_log.md
+@@ -6,3 +6,10 @@ Every formal experiment (README 9.5). One row per run; newest at the bottom.
+ |---|---|---|---|---:|---:|---:|---|---|---|
+ | 2026-10-01 | 20261001_clip_vitb32_seed42 | image | frozen CLIP ViT-B/32 + linear head, lr 1e-3, 30 epochs, best epoch 7 | 42 | 0.5266 | 0.6252 | Windows, RTX 5090, torch 2.11 cu128 | Yuxiang | majority baseline 0.4349; val curve noisy (0.43-0.53) |
+ | 2026-10-05 | mac_test | image | Mac reproduction of 20261001_clip_vitb32_seed42 (same config, features re-extracted on MPS) | 42 | 0.5266 | 0.6252 | MacBook Pro, Apple Silicon, MPS, torch 2.11 | Yuxiang | identical to Windows run: best epoch 7, same confusion matrix |
++| 2026-10-16 | 20261016_distilbert_clip_seed42 | multimodal | frozen DistilBERT [CLS] + image group CLIP cache, L2, MLP 1536-512-2, lr 1e-3, batch 16, 30 epochs, best epoch 25 | 42 | 0.5336 | 0.6567 | Linux, 4 vCPU, CPU only, torch 2.11 | Claude (multimodal) | majority 0.4349; overfits (val loss 0.69 -> 1.7); 43.5 s |
++| 2026-10-16 | 20261016_distilbert_clip_seed42_reproduction_cpu | multimodal | reproduction: re-extracted text cache + CPU CLIP cache, best epoch 29 | 42 | 0.5435 | 0.7067 | same | Claude (multimodal) | diff 0.0098 <= 0.01 -> REPRODUCTION OK; end-to-end check 6.4e-7 |
++| 2026-10-16 | 20261016_distilbert_clip_seed42_rerun_same_inputs | multimodal | same command and inputs as the main run | 42 | 0.5336 | 0.6567 | same | Claude (multimodal) | identical predictions (deterministic on CPU) |
++| 2026-10-16 | 20261016_distilbert_clip_frozen_seed43 / _seed44 | multimodal | baseline, extra seeds | 43/44 | 0.5315 / 0.5441 | 0.7039 / 0.6853 | same | Claude (multimodal) | 3-seed mean 0.5364 ± 0.0067 |
++| 2026-10-16 | 20261016_distilbert_meanpool_clip_frozen_seed42/43/44 | multimodal | ablation: mean-pooled text | 42-44 | 0.5280 ± 0.0032 | 0.6891 | same | Claude (multimodal) | not better than [CLS] |
++| 2026-10-16 | 20261016_clip_frozen_mlp_image_only_seed42/43/44 | multimodal | ablation: CLIP only, same MLP | 42-44 | 0.5459 ± 0.0108 | 0.7144 | same | Claude (multimodal) | image alone >= fusion |
++| 2026-10-16 | 20261016_distilbert_frozen_mlp_text_only_seed42/43/44 | multimodal | ablation: DistilBERT [CLS] only, same MLP | 42-44 | 0.4862 ± 0.0079 | 0.6052 | same | Claude (multimodal) | frozen text features near majority baseline |
+diff --git a/scripts/compare_feature_caches.py b/scripts/compare_feature_caches.py
+new file mode 100644
+index 0000000..079f890
+--- /dev/null
++++ b/scripts/compare_feature_caches.py
+@@ -0,0 +1,56 @@
++"""Compare two feature caches of the same split row by row (same sample IDs, same order).
++
++Used to check that features extracted on another machine (or from a local copy of the pinned
++weights) match a reference cache, e.g. CPU vs the image group's CUDA cache:
++
++    python -m scripts.compare_feature_caches features/20261006_code_fixes_validation_v2 \
++        features/clip_vitb32_pooler_cpu --splits train validation
++
++Prints max/mean absolute difference and the minimum cosine similarity per split; exits nonzero
++if sample IDs, labels or shapes differ, or if the minimum cosine is below --min_cosine.
++"""
++import argparse
++import sys
++from pathlib import Path
++
++import torch
++import torch.nn.functional as F
++
++
++def compare(reference_dir, candidate_dir, split):
++    ref = torch.load(Path(reference_dir) / f"{split}.pt", map_location="cpu", weights_only=True)
++    cand = torch.load(Path(candidate_dir) / f"{split}.pt", map_location="cpu", weights_only=True)
++    if ref["sample_id"] != cand["sample_id"]:
++        raise ValueError(f"{split}: sample IDs or order differ")
++    if not torch.equal(ref["labels"], cand["labels"]):
++        raise ValueError(f"{split}: labels differ")
++    a, b = ref["features"].float(), cand["features"].float()
++    if a.shape != b.shape:
++        raise ValueError(f"{split}: shapes {tuple(a.shape)} vs {tuple(b.shape)}")
++    diff = (a - b).abs()
++    cos = F.cosine_similarity(a, b, dim=1)
++    return {"n": a.shape[0], "max_abs": diff.max().item(), "mean_abs": diff.mean().item(),
++            "mean_abs_reference": a.abs().mean().item(), "min_cosine": cos.min().item(),
++            "mean_cosine": cos.mean().item()}
++
++
++def main():
++    ap = argparse.ArgumentParser()
++    ap.add_argument("reference_dir")
++    ap.add_argument("candidate_dir")
++    ap.add_argument("--splits", nargs="+", default=["train", "validation"])
++    ap.add_argument("--min_cosine", type=float, default=0.999)
++    args = ap.parse_args()
++    ok = True
++    for split in args.splits:
++        r = compare(args.reference_dir, args.candidate_dir, split)
++        print(f"{split}: n={r['n']}  max_abs={r['max_abs']:.3e}  mean_abs={r['mean_abs']:.3e} "
++              f"(reference mean |x| {r['mean_abs_reference']:.3f})  "
++              f"min_cos={r['min_cosine']:.6f}  mean_cos={r['mean_cosine']:.6f}")
++        ok &= r["min_cosine"] >= args.min_cosine
++    print("FEATURES MATCH" if ok else "FEATURES DIFFER")
++    return 0 if ok else 1
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/scripts/convert_openai_clip_to_hf.py b/scripts/convert_openai_clip_to_hf.py
+new file mode 100644
+index 0000000..4b65b0a
+--- /dev/null
++++ b/scripts/convert_openai_clip_to_hf.py
+@@ -0,0 +1,137 @@
++"""Convert OpenAI's original CLIP ViT-B/32 checkpoint into a local Hugging Face CLIPModel folder.
++
++Only needed on machines that cannot reach huggingface.co (the team default is
++`CLIPModel.from_pretrained("openai/clip-vit-base-patch32", revision="3d74acf")`).
++`openai/clip-vit-base-patch32` on the Hub is itself a conversion of this OpenAI file, so the
++weights are the same; `scripts/compare_feature_caches.py` checks the result against the image
++group's CUDA cache.
++
++    python -m scripts.convert_openai_clip_to_hf --openai_pt ViT-B-32.pt --out_dir hf_local/clip-vit-base-patch32
++
++The OpenAI file's SHA-256 must be 40d365715913c9da98579312b702a82c18be219cc2a73407c4526f58eba950af
++(the hash is part of OpenAI's official download URL).
++"""
++import argparse
++import hashlib
++import json
++import sys
++from pathlib import Path
++
++import torch
++from transformers import CLIPConfig, CLIPModel
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++
++from src.image.safety import require_new_paths  # noqa: E402
++
++OPENAI_SHA256 = "40d365715913c9da98579312b702a82c18be219cc2a73407c4526f58eba950af"
++
++# preprocessor_config.json of openai/clip-vit-base-patch32 (official CLIP preprocessing).
++PREPROCESSOR_CONFIG = {
++    "crop_size": 224,
++    "do_center_crop": True,
++    "do_normalize": True,
++    "do_resize": True,
++    "feature_extractor_type": "CLIPFeatureExtractor",
++    "image_mean": [0.48145466, 0.4578275, 0.40821073],
++    "image_std": [0.26862954, 0.26130258, 0.27577711],
++    "resample": 3,
++    "size": 224,
++}
++
++
++def clip_config() -> CLIPConfig:
++    """Architecture of openai/clip-vit-base-patch32 (QuickGELU, LayerNorm eps 1e-5)."""
++    return CLIPConfig(
++        text_config=dict(vocab_size=49408, hidden_size=512, intermediate_size=2048,
++                         num_hidden_layers=12, num_attention_heads=8, max_position_embeddings=77,
++                         hidden_act="quick_gelu", layer_norm_eps=1e-5,
++                         bos_token_id=49406, eos_token_id=49407, pad_token_id=1),
++        vision_config=dict(hidden_size=768, intermediate_size=3072, num_hidden_layers=12,
++                           num_attention_heads=12, image_size=224, patch_size=32,
++                           hidden_act="quick_gelu", layer_norm_eps=1e-5),
++        projection_dim=512,
++        logit_scale_init_value=2.6592,
++    )
++
++
++def convert_block(src: dict, src_prefix: str, dst_prefix: str, out: dict) -> None:
++    """One residual attention block: fused in_proj -> q/k/v, c_fc/c_proj -> fc1/fc2."""
++    q, k, v = src[f"{src_prefix}.attn.in_proj_weight"].chunk(3, dim=0)
++    qb, kb, vb = src[f"{src_prefix}.attn.in_proj_bias"].chunk(3, dim=0)
++    for name, w, b in (("q_proj", q, qb), ("k_proj", k, kb), ("v_proj", v, vb)):
++        out[f"{dst_prefix}.self_attn.{name}.weight"] = w
++        out[f"{dst_prefix}.self_attn.{name}.bias"] = b
++    pairs = {
++        "attn.out_proj": "self_attn.out_proj",
++        "ln_1": "layer_norm1",
++        "ln_2": "layer_norm2",
++        "mlp.c_fc": "mlp.fc1",
++        "mlp.c_proj": "mlp.fc2",
++    }
++    for s, d in pairs.items():
++        out[f"{dst_prefix}.{d}.weight"] = src[f"{src_prefix}.{s}.weight"]
++        out[f"{dst_prefix}.{d}.bias"] = src[f"{src_prefix}.{s}.bias"]
++
++
++def convert_state_dict(src: dict, n_layers: int = 12) -> dict:
++    out = {
++        # vision tower
++        "vision_model.embeddings.class_embedding": src["visual.class_embedding"],
++        "vision_model.embeddings.patch_embedding.weight": src["visual.conv1.weight"],
++        "vision_model.embeddings.position_embedding.weight": src["visual.positional_embedding"],
++        "vision_model.pre_layrnorm.weight": src["visual.ln_pre.weight"],
++        "vision_model.pre_layrnorm.bias": src["visual.ln_pre.bias"],
++        "vision_model.post_layernorm.weight": src["visual.ln_post.weight"],
++        "vision_model.post_layernorm.bias": src["visual.ln_post.bias"],
++        "visual_projection.weight": src["visual.proj"].t(),
++        # text tower
++        "text_model.embeddings.token_embedding.weight": src["token_embedding.weight"],
++        "text_model.embeddings.position_embedding.weight": src["positional_embedding"],
++        "text_model.final_layer_norm.weight": src["ln_final.weight"],
++        "text_model.final_layer_norm.bias": src["ln_final.bias"],
++        "text_projection.weight": src["text_projection"].t(),
++        "logit_scale": src["logit_scale"],
++    }
++    for i in range(n_layers):
++        convert_block(src, f"visual.transformer.resblocks.{i}", f"vision_model.encoder.layers.{i}", out)
++        convert_block(src, f"transformer.resblocks.{i}", f"text_model.encoder.layers.{i}", out)
++    return {k: v.detach().clone().float().contiguous() for k, v in out.items()}
++
++
++def main():
++    ap = argparse.ArgumentParser()
++    ap.add_argument("--openai_pt", required=True)
++    ap.add_argument("--out_dir", required=True, help="must be a new directory")
++    args = ap.parse_args()
++    out_dir = Path(args.out_dir)
++    require_new_paths(out_dir)
++
++    with open(args.openai_pt, "rb") as stream:
++        digest = hashlib.file_digest(stream, "sha256").hexdigest()
++    if digest != OPENAI_SHA256:
++        raise ValueError(f"{args.openai_pt}: SHA-256 {digest} is not the official ViT-B/32 file")
++
++    src = torch.jit.load(args.openai_pt, map_location="cpu").state_dict()
++    model = CLIPModel(clip_config()).eval()
++    converted = convert_state_dict(src)
++    missing, unexpected = model.load_state_dict(converted, strict=False)
++    # position_ids buffers are created by the model itself; nothing else may be missing.
++    missing = [k for k in missing if not k.endswith("position_ids")]
++    if missing or unexpected:
++        raise RuntimeError(f"conversion mismatch: missing={missing} unexpected={unexpected}")
++
++    out_dir.mkdir(parents=True, exist_ok=False)
++    model.save_pretrained(out_dir)
++    (out_dir / "preprocessor_config.json").write_text(json.dumps(PREPROCESSOR_CONFIG, indent=2),
++                                                     encoding="utf-8")
++    (out_dir / "conversion.json").write_text(json.dumps({
++        "source_file": Path(args.openai_pt).name, "source_sha256": digest,
++        "equivalent_hub_model": "openai/clip-vit-base-patch32",
++        "converted_tensors": len(converted),
++    }, indent=2), encoding="utf-8")
++    print(f"converted {len(converted)} tensors -> {out_dir}")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/scripts/summarize_multimodal_runs.py b/scripts/summarize_multimodal_runs.py
+new file mode 100644
+index 0000000..03651ad
+--- /dev/null
++++ b/scripts/summarize_multimodal_runs.py
+@@ -0,0 +1,55 @@
++"""Collect validation metrics of multimodal runs into one table (per seed and mean +/- std).
++
++    python -m scripts.summarize_multimodal_runs --out Team_Review/multimodal/validation_runs.csv
++
++Reads outputs/multimodal/<run_id>/metrics_validation.json for every run whose id matches
++--pattern; reproduction/rerun folders are skipped unless --include_reproductions is given.
++"""
++import argparse
++import json
++from pathlib import Path
++
++import pandas as pd
++
++KEYS = ["macro_f1", "accuracy", "f1_0", "f1_1", "best_epoch", "training_seconds"]
++
++
++def main():
++    ap = argparse.ArgumentParser()
++    ap.add_argument("--runs_dir", default="outputs/multimodal")
++    ap.add_argument("--pattern", default="*")
++    ap.add_argument("--out", default=None, help="optional CSV of per-run rows")
++    ap.add_argument("--include_reproductions", action="store_true")
++    args = ap.parse_args()
++
++    rows = []
++    for path in sorted(Path(args.runs_dir).glob(f"{args.pattern}/metrics_validation.json")):
++        run_id = path.parent.name
++        if not args.include_reproductions and ("reproduction" in run_id or "rerun" in run_id):
++            continue
++        m = json.loads(path.read_text(encoding="utf-8"))
++        rows.append({"run_id": run_id, "model_name": m["model_name"], "seed": m["seed"],
++                     **{k: m.get(k) for k in KEYS}})
++    if not rows:
++        raise SystemExit("no runs found")
++    df = pd.DataFrame(rows).sort_values(["model_name", "seed"])
++    if args.out:
++        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
++        df.to_csv(args.out, index=False)
++
++    print("| model | seed | Macro-F1 | Accuracy | F1 class 0 | F1 class 1 | best epoch | train time |")
++    print("|---|---:|---:|---:|---:|---:|---:|---:|")
++    for _, r in df.iterrows():
++        print(f"| {r.model_name} | {r.seed} | {r.macro_f1:.4f} | {r.accuracy:.4f} | {r.f1_0:.4f} | "
++              f"{r.f1_1:.4f} | {r.best_epoch} | {r.training_seconds:.1f}s |")
++    print()
++    print("| model | seeds | Macro-F1 mean ± std | Accuracy mean ± std | F1 class 0 mean ± std |")
++    print("|---|---:|---:|---:|---:|")
++    for name, g in df.groupby("model_name", sort=False):
++        def ms(col):
++            return f"{g[col].mean():.4f} ± {g[col].std(ddof=1) if len(g) > 1 else 0:.4f}"
++        print(f"| {name} | {len(g)} | {ms('macro_f1')} | {ms('accuracy')} | {ms('f1_0')} |")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/src/image/extract_features.py b/src/image/extract_features.py
+index 0a33445..925d664 100644
+--- a/src/image/extract_features.py
++++ b/src/image/extract_features.py
+@@ -23,7 +23,7 @@ from pathlib import Path
+ import torch
+ import transformers
+ from tqdm import tqdm
+-from transformers import CLIPModel, CLIPProcessor
++from transformers import AutoImageProcessor, CLIPModel, CLIPProcessor
+ 
+ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+ 
+@@ -33,10 +33,18 @@ from src.image.cache import file_sha256  # noqa: E402
+ from src.image.safety import require_new_paths  # noqa: E402
+ 
+ 
+-def load_clip(model_id: str, revision: str, device: torch.device):
+-    """Download (first time) and load CLIP, then freeze it."""
+-    model = CLIPModel.from_pretrained(model_id, revision=revision)
+-    processor = CLIPProcessor.from_pretrained(model_id, revision=revision)
++def load_clip(model_id: str, revision: str, device: torch.device, model_dir: str | None = None):
++    """Download (first time) and load CLIP, then freeze it.
++
++    model_dir: optional local copy of the same weights (e.g. from scripts/convert_openai_clip_to_hf.py
++    on a machine without Hugging Face access); only the image processor is needed then.
++    """
++    if model_dir:
++        model = CLIPModel.from_pretrained(model_dir)
++        processor = AutoImageProcessor.from_pretrained(model_dir)
++    else:
++        model = CLIPModel.from_pretrained(model_id, revision=revision)
++        processor = CLIPProcessor.from_pretrained(model_id, revision=revision)
+     model.eval().to(device)                 # eval(): inference mode; to(device): move to GPU
+     for p in model.parameters():
+         p.requires_grad_(False)             # frozen: no parameter will ever be updated
+@@ -81,6 +89,8 @@ def main():
+     ap.add_argument("--batch_size", type=int, default=64)
+     ap.add_argument("--revision", default=None, help="override the revision in the config")
+     ap.add_argument("--limit", type=int, default=None, help="only the first N rows (smoke test)")
++    ap.add_argument("--model_dir", default=None,
++                    help="local copy of openai/clip-vit-base-patch32 (offline machines)")
+     args = ap.parse_args()
+     if args.batch_size <= 0 or (args.limit is not None and args.limit <= 0):
+         ap.error("batch_size and limit must be positive")
+@@ -98,13 +108,15 @@ def main():
+     device = get_device()
+     print(f"device={device}  model={cfg['clip_model_id']}@{revision}  feature={cfg['feature']}")
+ 
+-    model, processor = load_clip(cfg["clip_model_id"], revision, device)
++    model, processor = load_clip(cfg["clip_model_id"], revision, device, args.model_dir)
+     out_dir.mkdir(parents=True, exist_ok=False)
+ 
+     meta = {
+         "clip_model_id": cfg["clip_model_id"],
+         "clip_revision_requested": revision,
+         "clip_commit_resolved": getattr(model.config, "_commit_hash", None),
++        "clip_weights_source": "local_dir" if args.model_dir else "hub",
++        "image_processor": type(processor).__name__,
+         "feature": cfg["feature"],
+         "torch": torch.__version__,
+         "transformers": transformers.__version__,
+diff --git a/src/multimodal/README.md b/src/multimodal/README.md
+index 8cfd4b0..fa527b6 100644
+--- a/src/multimodal/README.md
++++ b/src/multimodal/README.md
+@@ -1,46 +1,118 @@
+-# Multimodal baseline: frozen DistilBERT + frozen CLIP
+-
+-The initial multimodal model follows the shared project specification:
++# Multimodal baseline: frozen DistilBERT + frozen CLIP / 多模态基线
+ 
+ ```text
+-text_input -> frozen DistilBERT first-token feature (768)
+-                                                    \
+-                                                     normalize + concatenate (1536)
+-                                                    /                         |
+-image -> frozen CLIP vision pooler_output (768)                               v
+-                                                               MLP 1536 -> 512 -> 2
++text_input -> frozen DistilBERT -> [CLS] last_hidden_state[:, 0] (768) -> L2 \
++                                                                              concat [text | image] (1536)
++image      -> frozen CLIP ViT-B/32 vision -> pooler_output (768)      -> L2 /        |
++                                                                                       v
++                                                     Linear 1536->512 -> ReLU -> Dropout 0.2 -> Linear 512->2
+ ```
+ 
+-Only the fusion MLP is trainable. The two pretrained encoders stay frozen and
+-in evaluation mode. The image representation is the same CLIP ViT-B/32
+-`pooler_output` used by the image group; the image-only `768 -> 2` head is not
+-used because multimodal fusion needs the full 768-dimensional representation.
++Only the fusion MLP (787,970 parameters) is trained. Both encoders are frozen, so their outputs are computed once and cached; the MLP then trains in about 45 s on a 4-core CPU. `FusionHead` (cached features) and `MultimodalClassifier` (raw text + raw image) share the same normalization, concatenation order and MLP, and a trained head loads into the end-to-end model unchanged (`check_end_to_end.py` verifies this).
++
++只训练融合 MLP（787,970 个参数）。两个编码器都冻结，输出只需计算一次并缓存；之后在 4 核 CPU 上训练 MLP 约 45 秒。`FusionHead`（缓存特征）和 `MultimodalClassifier`（原始文字 + 原始图片）使用同一套归一化、拼接顺序和 MLP，训练好的分类头可直接装入端到端模型（由 `check_end_to_end.py` 验证）。
++
++Results, reproduction evidence and the manual review are in [Team_Review/multimodal/README.md](../../Team_Review/multimodal/README.md).
++
++结果、复现证据和人工核对见 [Team_Review/multimodal/README.md](../../Team_Review/multimodal/README.md)。
++
++## Text features: how DistilBERT is used / 文字特征：DistilBERT 的用法
++
++| Item / 项目 | Setting / 设置 | Why / 依据 |
++|---|---|---|
++| Model / 模型 | `distilbert/distilbert-base-uncased` @ `1c4513b2eedbda136f57676a34eea67aba266e5c`, `DistilBertModel` (MLM head unused) | README 4.1 |
++| Input / 输入 | `text_input` from the shared loader (= `text_corrected`; empty -> `[NO_TEXT]`) | README 3.4; the proposal encodes the corrected text |
++| Tokenizer / 分词 | the model's own uncased WordPiece, `[CLS] text [SEP]`, `truncation=True`, `max_length=128`, padding to the longest caption in the batch with `attention_mask` | README 4.1; only 4 train + 1 test captions exceed 128 tokens (median 20) |
++| Sentence vector / 句向量 | **`first_token`**: final-layer `[CLS]` state `last_hidden_state[:, 0]` (768-d) | DistilBERT (Sanh et al., 2019) removes BERT's pooler, so there is no `pooler_output`; Hugging Face's `DistilBertForSequenceClassification`, written by the paper's authors, classifies from exactly this vector. Team decision D13. |
++| Ablation / 对照 | `mean_pooling`: mean of `last_hidden_state` over real tokens (mask excludes padding) | Usual sentence vector for a *frozen* encoder (Sentence-BERT, Reimers & Gurevych, 2019) |
++| Mode / 模式 | `eval()`, `no_grad`, float32, raw (un-normalized) vectors cached; L2 normalization happens inside the fusion head | identical code path for cached and end-to-end inference |
++
++[CLS] stays the baseline. Mean pooling was not better on validation (3 seeds: 0.5280 ± 0.0032 vs 0.5364 ± 0.0067 Macro-F1). Both vectors are cached in one pass (`src/text/extract_features.py`). `src/text/encoder.py` holds the pooling code shared with `MultimodalClassifier`.
++
++[CLS] 仍作为基线；mean pooling 在 Validation 上没有更好（3 个 seed：Macro-F1 0.5280 ± 0.0032 对 0.5364 ± 0.0067）。两种向量在一次运行中同时缓存（`src/text/extract_features.py`）；池化代码在 `src/text/encoder.py`，与 `MultimodalClassifier` 共用。
++
++## Image features / 图片特征
++
++The baseline uses the image group's reference cache `Image_Features_CLIP_ViTB32_20261006.zip` (SHA-256 `7a02d46b…5662`, train + validation, 768-d `pooler_output`, CUDA). It has no test split. The same encoder was therefore re-run on CPU for train/validation/test (`features/clip_vitb32_pooler_cpu`). Both caches agree to mean cosine 0.99997. The few larger gaps (minimum cosine 0.981) all come from TF32 in the CUDA patch-embedding convolution, as [the test report](../../docs/Multimodal_Test_Results.md) shows.
++
++基线使用图片组的参考缓存 `Image_Features_CLIP_ViTB32_20261006.zip`（SHA-256 `7a02d46b…5662`，train + validation，768 维 `pooler_output`，CUDA 提取），其中没有 test。因此在 CPU 上用同一编码器重新提取了 train/validation/test（`features/clip_vitb32_pooler_cpu`）。两份缓存的平均余弦相似度为 0.99997；少数较大差异（最小 0.981）完全来自 CUDA patch-embedding 卷积的 TF32，见[检测报告](../../docs/Multimodal_Test_Results.md)。
++
++## Commands / 命令
++
++Run from the repository root with `MEMOTION_DATA_DIR` set. Existing outputs, checkpoints and caches are protected; use new run IDs and directories. Everything below was run on CPU.
+ 
+-## Fixed model versions
++从仓库根目录运行并设置 `MEMOTION_DATA_DIR`。已有输出、checkpoint 和缓存受覆盖保护，请使用新的 run ID 和目录。以下全部在 CPU 上运行过。
+ 
+-- Text: `distilbert/distilbert-base-uncased`
+-  at `1c4513b2eedbda136f57676a34eea67aba266e5c`
+-- Image: `openai/clip-vit-base-patch32` at `3d74acf`
+-- Maximum text length: 128 tokens
+-- Random seed: 42
++```bash
++# 0. data check / 数据检查
++python -m scripts.verify_dataset
+ 
+-## Smoke test
++# 1. text features (~1.5 min CPU): features/distilbert_first_token + features/distilbert_mean_pooling
++python -m src.text.extract_features
+ 
+-From the repository root with the virtual environment activated and
+-`MEMOTION_DATA_DIR` set:
++# 2. image features: unzip the image group's cache at the repo root (train/validation) ...
++#    or extract all three splits yourself (~3-4 min CPU per 5.6k images):
++python -m src.image.extract_features --splits train validation test --out_dir features/clip_vitb32_pooler_cpu
+ 
+-```powershell
++# 3. train the fusion MLP (README 6 outputs + checkpoints/multimodal/<run_id>/best.pt)
++python -m src.multimodal.train --run_id 20261016_distilbert_clip_seed42
++python -m scripts.verify_predictions outputs/multimodal/20261016_distilbert_clip_seed42/predictions_validation.csv
++
++# 4. reload the saved head (compares with the reported metrics, tolerance 0.01)
++python -m src.multimodal.evaluate --run_id 20261016_distilbert_clip_seed42
++
++# 5. second-member reproduction: fresh text cache + CPU image cache, new run id
++python -m src.text.extract_features --out_prefix features/reproduction_distilbert
++python -m src.multimodal.train --text_features_dir features/reproduction_distilbert_first_token \
++    --image_features_dir features/clip_vitb32_pooler_cpu --run_id 20261016_distilbert_clip_seed42_reproduction_cpu
++python -m scripts.verify_reproduction \
++    --reference_metrics outputs/multimodal/20261016_distilbert_clip_seed42/metrics_validation.json \
++    --candidate_metrics outputs/multimodal/20261016_distilbert_clip_seed42_reproduction_cpu/metrics_validation.json
++
++# 6. end-to-end check (raw text + raw image through MultimodalClassifier) and smoke test
++python -m src.multimodal.check_end_to_end --run_id 20261016_distilbert_clip_seed42_reproduction_cpu
+ python -m src.multimodal.smoke_test --batch_size 2
+-```
+ 
+-The test reads real validation samples and must report:
++# 7. manual review sheet (4 TP / TN / FP / FN)
++python -m src.multimodal.review_samples --run_id 20261016_distilbert_clip_seed42
+ 
+-```text
+-text_features: (2, 768)
+-image_features: (2, 768)
+-fused_features: (2, 1536)
+-logits: (2, 2)
+-MULTIMODAL SMOKE TEST OK
++# 8. ablations and extra seeds (supplementary, validation only)
++python -m src.multimodal.train --config configs/ablations/text_only.json      # also image_only, mean_pooling
++python -m src.multimodal.train --seed 43
++python -m scripts.summarize_multimodal_runs
++
++# 9. FINAL ONLY, once: test split (needs an image cache that contains test)
++python -m src.multimodal.evaluate --run_id 20261016_distilbert_clip_seed42 --split test \
++    --image_features_dir features/clip_vitb32_pooler_cpu
+ ```
+ 
+-This test does not train the model or write to the dataset.
++Test was not scored. No setting was chosen with test data.
++
++Test 尚未评分，所有设置都没有使用 test 选择。
++
++## Offline machines / 无法访问 Hugging Face 的机器
++
++The default path loads the pinned Hub revisions. If `huggingface.co` is blocked, as it was in the CPU environment used here, every script accepts a local copy of the same weights: `--model_dir` for the extractors, `--text_model_dir` / `--clip_model_dir` for the smoke test and end-to-end check.
++
++默认从 Hub 加载固定 revision。如果无法访问 `huggingface.co`（本次 CPU 环境即如此），所有脚本都可以改用同一权重的本地副本：提取脚本用 `--model_dir`，smoke test 和端到端检查用 `--text_model_dir` / `--clip_model_dir`。
++
++| Encoder / 编码器 | Local copy used here / 本次使用的本地副本 | Check / 校验 |
++|---|---|---|
++| DistilBERT | Hugging Face's legacy S3 files `distilbert-base-uncased-{pytorch_model.bin,config.json,tokenizer.json}` + `bert-base-uncased-vocab.txt`, plus `tokenizer_config.json` `{"do_lower_case": true, "model_max_length": 512}` | weights SHA-256 `e60d7161…ea7c` (recorded in every cache `meta.json`); 66,362,880 parameters; all 100 encoder tensors load; MLM sanity check sensible |
++| CLIP ViT-B/32 | OpenAI `ViT-B-32.pt`, converted by `scripts/convert_openai_clip_to_hf.py` | SHA-256 `40d36571…0af` = hash in OpenAI's official URL; reproduces the image group's CUDA features once TF32 is emulated (cosine 1.00000) |
++
++## Files / 文件
++
++| File / 文件 | Purpose / 用途 |
++|---|---|
++| `src/text/encoder.py` | load frozen DistilBERT, tokenize, `first_token` / `mean_pooling` |
++| `src/text/extract_features.py`, `src/text/cache.py` | write / validate text caches (same layout and checks as the image cache) |
++| `src/multimodal/features.py` | joint loader: validates both caches, joins on `sample_id` |
++| `src/multimodal/model.py` | `FusionHead`, `MultimodalClassifier`, `load_fusion_head` |
++| `src/multimodal/train.py`, `evaluate.py` | training with README 6 outputs; checkpoint replay / test scoring |
++| `src/multimodal/check_end_to_end.py` | cached path == raw-input path |
++| `src/multimodal/review_samples.py` | manual-review grid and CSV |
++| `src/multimodal/smoke_test.py` | real-data forward pass (shapes) |
++| `configs/multimodal_baseline.json`, `configs/ablations/*.json` | settings |
++| `scripts/compare_feature_caches.py`, `scripts/convert_openai_clip_to_hf.py`, `scripts/summarize_multimodal_runs.py` | cache comparison, offline CLIP, run table |
++| `tests/test_multimodal_pipeline.py` | 9 tests (cache checks, sample_id alignment, fusion order, head transfer, pooling, overwrite protection, train/evaluate round trip) |
+diff --git a/src/multimodal/check_end_to_end.py b/src/multimodal/check_end_to_end.py
+new file mode 100644
+index 0000000..15d32ba
+--- /dev/null
++++ b/src/multimodal/check_end_to_end.py
+@@ -0,0 +1,123 @@
++"""Check that the cached-feature pipeline equals the end-to-end model of README 4.3.
++
++Loads a trained fusion head into MultimodalClassifier (frozen DistilBERT + frozen CLIP + the same
++MLP), runs it on raw captions and raw images for some validation samples, and compares with
++  * the cached text/image feature rows of the same sample_id (alignment + preprocessing check)
++  * probability_1 in the run's predictions_validation.csv (training path == inference path).
++
++    python -m src.multimodal.check_end_to_end --run_id 20261016_distilbert_clip_seed42
++    python -m src.multimodal.check_end_to_end --run_id ... --text_model_dir hf_local/distilbert-base-uncased \
++        --clip_model_dir hf_local/clip-vit-base-patch32          # offline copies of the pinned weights
++
++Passes when every predicted label agrees and max |probability difference| <= --tolerance.
++The image group's cache was extracted on CUDA (TF32 convolution), so image features differ from
++CPU by ~1e-3; this is reported, not hidden.
++"""
++import argparse
++import json
++import sys
++from pathlib import Path
++
++import pandas as pd
++import torch
++import torch.nn.functional as F
++from transformers import AutoImageProcessor, AutoTokenizer, CLIPProcessor
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++from src.common.data import load_image, load_split  # noqa: E402
++from src.common.metrics import save_json  # noqa: E402
++from src.common.reproducibility import get_device, set_seed  # noqa: E402
++from src.image.safety import require_new_paths, validate_run_id  # noqa: E402
++from src.multimodal.features import load_split_features  # noqa: E402
++from src.multimodal.model import build_model, load_fusion_head  # noqa: E402
++from src.text.encoder import text_source, tokenize  # noqa: E402
++
++
++def pick_rows(frame, n):
++    """n rows spread evenly over the split (deterministic)."""
++    step = max(1, len(frame) // n)
++    return frame.iloc[::step].head(n)
++
++
++def main():
++    ap = argparse.ArgumentParser()
++    ap.add_argument("--run_id", required=True)
++    ap.add_argument("--n", type=int, default=64)
++    ap.add_argument("--batch_size", type=int, default=16)
++    ap.add_argument("--text_model_dir", default=None)
++    ap.add_argument("--clip_model_dir", default=None)
++    ap.add_argument("--data_dir", default=None)
++    ap.add_argument("--tolerance", type=float, default=0.01)
++    args = ap.parse_args()
++    validate_run_id(args.run_id)
++
++    run_dir = Path("outputs/multimodal") / args.run_id
++    report_path = run_dir / "checks" / "end_to_end_validation.json"
++    require_new_paths(report_path)
++    ckpt = torch.load(Path("checkpoints/multimodal") / args.run_id / "best.pt",
++                      map_location="cpu", weights_only=True)
++    cfg = ckpt["config"]
++    if tuple(ckpt["modalities"]) != ("text", "image"):
++        raise ValueError("end-to-end check needs a text+image fusion run")
++    set_seed(cfg["seed"])
++    device = get_device()
++
++    frame = pick_rows(load_split("validation", args.data_dir), args.n)
++    ids = frame["sample_id"].tolist()
++    reported = pd.read_csv(run_dir / "predictions_validation.csv",
++                           float_precision="round_trip").set_index("sample_id").loc[ids]
++
++    model = build_model(cfg, args.text_model_dir, args.clip_model_dir).to(device).eval()
++    load_fusion_head(model, ckpt["state_dict"])
++    source, kwargs = text_source(cfg, args.text_model_dir)
++    tokenizer = AutoTokenizer.from_pretrained(source, **kwargs)
++    processor = (AutoImageProcessor.from_pretrained(args.clip_model_dir) if args.clip_model_dir else
++                 CLIPProcessor.from_pretrained(cfg["clip_model_id"], revision=cfg["clip_revision"]))
++
++    outs = {"text_features": [], "image_features": [], "prob": []}
++    with torch.no_grad():
++        for start in range(0, len(frame), args.batch_size):
++            part = frame.iloc[start:start + args.batch_size]
++            enc = tokenize(tokenizer, part["text_input"].tolist(), cfg["text_max_length"])
++            pixels = processor(images=[load_image(p) for p in part["image_abspath"]],
++                               return_tensors="pt")["pixel_values"]
++            out = model(input_ids=enc["input_ids"].to(device),
++                        attention_mask=enc["attention_mask"].to(device),
++                        pixel_values=pixels.to(device), return_features=True)
++            outs["text_features"].append(out["text_features"].cpu())
++            outs["image_features"].append(out["image_features"].cpu())
++            outs["prob"].append(out["logits"].softmax(dim=-1)[:, 1].cpu())
++    outs = {k: torch.cat(v) for k, v in outs.items()}
++
++    _, cached, _ = load_split_features(cfg, "validation", ckpt["text_features_dir"],
++                                       ckpt["image_features_dir"], args.data_dir)
++    row = {sid: i for i, sid in enumerate(load_split("validation", args.data_dir)["sample_id"])}
++    index = torch.tensor([row[s] for s in ids])
++    report = {"run_id": args.run_id, "n": len(ids), "device": str(device),
++              "text_features_dir": ckpt["text_features_dir"],
++              "image_features_dir": ckpt["image_features_dir"],
++              "text_model": args.text_model_dir or f"{cfg['text_model_id']}@{cfg['text_revision']}",
++              "clip_model": args.clip_model_dir or f"{cfg['clip_model_id']}@{cfg['clip_revision']}"}
++    for name, key in (("text", "text_features"), ("image", "image_features")):
++        ref = F.normalize(cached[name][index], dim=-1)
++        diff = (outs[key] - ref).abs()
++        report[f"{name}_max_abs_diff"] = diff.max().item()
++        report[f"{name}_min_cosine"] = F.cosine_similarity(outs[key], ref, dim=1).min().item()
++    prob_ref = torch.tensor(reported["probability_1"].to_numpy(), dtype=torch.float32)
++    pred_now = (outs["prob"] >= cfg["threshold"]).long()
++    pred_ref = torch.tensor(reported["predicted_label"].to_numpy())
++    report["probability_max_abs_diff"] = (outs["prob"] - prob_ref).abs().max().item()
++    report["label_agreement"] = (pred_now == pred_ref).float().mean().item()
++    report["passed"] = bool(report["label_agreement"] == 1.0
++                            and report["probability_max_abs_diff"] <= args.tolerance)
++
++    report_path.parent.mkdir(parents=True, exist_ok=True)
++    save_json(report, report_path)
++    print(json.dumps(report, indent=2))
++    print("END-TO-END CHECK OK" if report["passed"] else "END-TO-END CHECK FAILED")
++    return 0 if report["passed"] else 1
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/src/multimodal/evaluate.py b/src/multimodal/evaluate.py
+new file mode 100644
+index 0000000..8e1653e
+--- /dev/null
++++ b/src/multimodal/evaluate.py
+@@ -0,0 +1,97 @@
++"""Evaluate a saved multimodal fusion head on one split with the shared metrics.
++
++    python -m src.multimodal.evaluate --run_id 20261016_distilbert_clip_seed42                 # validation
++    python -m src.multimodal.evaluate --run_id 20261016_distilbert_clip_seed42 --split test \
++        --image_features_dir features/clip_vitb32_pooler_cpu                                 # FINAL ONLY
++
++Validation re-evaluation is compared with the run's reported metrics (Macro-F1 tolerance 0.01,
++docs/decisions.md D11) and exits nonzero outside it. The image group's cache has no test split;
++pass a cache that has one. Never use test results to choose settings (README 3.2).
++"""
++import argparse
++import sys
++from pathlib import Path
++
++import torch
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++from src.common.metrics import (compute_metrics, get_confusion_matrix, metrics_json,  # noqa: E402
++                                predictions_frame, save_confusion_matrix_png, save_json)
++from src.common.reproducibility import get_device  # noqa: E402
++from src.common.reproduction import compare_metrics  # noqa: E402
++from src.image.safety import require_new_paths, validate_run_id  # noqa: E402
++from src.multimodal.features import load_split_features  # noqa: E402
++from src.multimodal.model import build_fusion_head  # noqa: E402
++from src.multimodal.train import predict  # noqa: E402
++
++
++def main():
++    ap = argparse.ArgumentParser()
++    ap.add_argument("--run_id", required=True)
++    ap.add_argument("--split", default="validation", choices=["validation", "test"])
++    ap.add_argument("--text_features_dir", default=None, help="default: the dir used for training")
++    ap.add_argument("--image_features_dir", default=None, help="default: the dir used for training")
++    ap.add_argument("--checkpoint", default=None,
++                    help="default: checkpoints/multimodal/<run_id>/best.pt")
++    ap.add_argument("--out_dir", default=None,
++                    help="default: outputs/multimodal/<run_id>/reeval (validation) or "
++                         "outputs/multimodal/<run_id> (test)")
++    ap.add_argument("--data_dir", default=None)
++    ap.add_argument("--reference_metrics", default=None,
++                    help="validation defaults to the reported run metrics")
++    ap.add_argument("--tolerance", type=float, default=0.01)
++    args = ap.parse_args()
++    validate_run_id(args.run_id)
++
++    if args.split == "test":
++        print("!! Scoring the TEST split. Do this once, at the end, never to pick settings.")
++
++    run_dir = Path(f"outputs/multimodal/{args.run_id}")
++    ckpt_path = Path(args.checkpoint or f"checkpoints/multimodal/{args.run_id}/best.pt")
++    out_dir = Path(args.out_dir or (run_dir / "reeval" if args.split == "validation" else run_dir))
++    tag = args.split
++    require_new_paths(*(out_dir / f"{name}_{tag}.{ext}" for name, ext in
++                        (("predictions", "csv"), ("metrics", "json"), ("confusion_matrix", "png"))))
++    reported = Path(args.reference_metrics) if args.reference_metrics else (
++        run_dir / f"metrics_{tag}.json" if tag == "validation" else None)
++    if reported is not None and not reported.is_file():
++        raise FileNotFoundError(f"Missing reproduction reference: {reported}")
++
++    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=True)
++    cfg = ckpt["config"]
++    device = get_device()
++
++    text_dir = args.text_features_dir or ckpt.get("text_features_dir")
++    image_dir = args.image_features_dir or ckpt.get("image_features_dir")
++    ids, features, y = load_split_features(cfg, args.split, text_dir, image_dir, args.data_dir)
++    head = build_fusion_head(cfg).to(device)
++    head.load_state_dict(ckpt["state_dict"])
++
++    prob = predict(head, features, device)
++    pred = (prob >= cfg["threshold"]).long()
++    m = compute_metrics(y.numpy(), pred.numpy())
++    cm = get_confusion_matrix(y.numpy(), pred.numpy())
++
++    candidate = metrics_json(cfg["model_name"], tag, cfg["seed"], cfg["threshold"], m, 0.0,
++                             checkpoint_epoch=ckpt["epoch"])
++    passed = compare_metrics(reported, candidate, args.tolerance) if reported is not None else True
++    out_dir.mkdir(parents=True, exist_ok=True)
++    predictions_frame(ids, y.numpy(), pred.numpy(), prob.numpy(), cfg["model_name"], tag,
++                      cfg["seed"]).to_csv(out_dir / f"predictions_{tag}.csv", index=False)
++    save_json(candidate, out_dir / f"metrics_{tag}.json")
++    save_confusion_matrix_png(cm, out_dir / f"confusion_matrix_{tag}.png",
++                              f"{cfg['model_name']} | {tag} | epoch {ckpt['epoch']}")
++
++    print(f"{tag}: Macro-F1 {m['macro_f1']:.4f}  Accuracy {m['accuracy']:.4f}  "
++          f"F1_0 {m['f1_0']:.4f}  F1_1 {m['f1_1']:.4f}")
++    print("confusion matrix [rows true 0/1, cols pred 0/1]:", cm.tolist())
++    print("written to", out_dir)
++
++    if not passed:
++        print("REPRODUCTION FAILED: Macro-F1 exceeds the allowed tolerance.")
++    return 0 if passed else 1
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/src/multimodal/features.py b/src/multimodal/features.py
+new file mode 100644
+index 0000000..ddd2c57
+--- /dev/null
++++ b/src/multimodal/features.py
+@@ -0,0 +1,61 @@
++"""Joint loader for cached text + image features, aligned by sample_id (README 3.2 / 7.3).
++
++Both caches are validated first (counts, IDs and order against metadata.csv, labels, dims, dtype,
++NaN/inf, SHA-256) by the same checks the image group uses, then joined on sample_id.
++"""
++from pathlib import Path
++
++import torch
++
++from src.image.cache import load_features as load_image_features
++from src.text.cache import load_text_features
++
++# The image group's reference cache (Image_Features_CLIP_ViTB32_20261006.zip, train/validation).
++DEFAULT_IMAGE_FEATURES_DIR = "features/20261006_code_fixes_validation_v2"
++
++
++def default_text_features_dir(config: dict) -> str:
++    return f"features/distilbert_{config['text_feature']}"
++
++
++def image_cache_config(config: dict) -> dict:
++    """Keys src/image/cache.py checks, taken from the multimodal config."""
++    return {"clip_model_id": config["clip_model_id"], "clip_revision": config["clip_revision"],
++            "feature": config["image_feature"]}
++
++
++def align_by_sample_id(ids, x, y, target_ids):
++    """Reorder (x, y) from `ids` order into `target_ids` order; every ID must be present once."""
++    position = {sid: i for i, sid in enumerate(ids)}
++    if len(position) != len(ids) or set(position) != set(target_ids):
++        raise ValueError("text and image caches do not contain the same sample IDs")
++    index = torch.tensor([position[sid] for sid in target_ids], dtype=torch.long)
++    return x[index], y[index]
++
++
++def load_split_features(config, split, text_features_dir=None, image_features_dir=None,
++                        data_dir=None, modalities=None):
++    """Return (sample_ids, {"text": [N, 768], "image": [N, 768]}, labels[N]) for one split.
++
++    Order follows the split's metadata.csv; only the requested modalities are loaded.
++    """
++    modalities = tuple(modalities or config.get("modalities", ("text", "image")))
++    loaded = {}
++    if "text" in modalities:
++        loaded["text"] = load_text_features(
++            Path(text_features_dir or default_text_features_dir(config)), split, config, data_dir)
++    if "image" in modalities:
++        loaded["image"] = load_image_features(
++            Path(image_features_dir or DEFAULT_IMAGE_FEATURES_DIR), split,
++            image_cache_config(config), data_dir)
++    if not loaded:
++        raise ValueError("no modality requested")
++
++    ids, _, labels = next(iter(loaded.values()))
++    features = {}
++    for name, (m_ids, x, y) in loaded.items():
++        x, y = align_by_sample_id(m_ids, x, y, ids)
++        if not torch.equal(y, labels):
++            raise ValueError(f"{split}: {name} labels disagree after sample_id alignment")
++        features[name] = x
++    return list(ids), features, labels
+diff --git a/src/multimodal/model.py b/src/multimodal/model.py
+index 22b65f2..9048664 100644
+--- a/src/multimodal/model.py
++++ b/src/multimodal/model.py
+@@ -1,4 +1,12 @@
+-"""Frozen DistilBERT + frozen CLIP vision encoder with a small fusion MLP."""
++"""Frozen DistilBERT + frozen CLIP vision encoder with a small fusion MLP.
++
++Two ways to run the same classifier:
++
++* MultimodalClassifier: raw text + raw image -> frozen encoders -> fusion MLP (end to end).
++* FusionHead: cached encoder features -> the identical normalization/concatenation/MLP.
++  Training uses this (src/multimodal/train.py) because the encoders never change; its
++  `classifier.*` weights load directly into MultimodalClassifier (see load_fusion_head).
++"""
+ from __future__ import annotations
+ 
+ import torch
+@@ -6,6 +14,71 @@ import torch.nn.functional as F
+ from torch import nn
+ from transformers import AutoModel, CLIPModel
+ 
++from src.text.encoder import pool_text_features
++
++FEATURE_DIMS = {"text": 768, "image": 768}
++MODALITY_ORDER = ("text", "image")  # concatenation order: [text | image]
++
++
++def build_fusion_mlp(input_dim: int, hidden_dim: int = 512, dropout: float = 0.2,
++                     num_classes: int = 2) -> nn.Sequential:
++    """README 4.3 small MLP: Linear -> ReLU -> Dropout -> Linear (one hidden layer)."""
++    return nn.Sequential(
++        nn.Linear(input_dim, hidden_dim),
++        nn.ReLU(),
++        nn.Dropout(dropout),
++        nn.Linear(hidden_dim, num_classes),
++    )
++
++
++class FusionHead(nn.Module):
++    """Trainable part of the multimodal model, applied to cached 768-d features.
++
++    modalities=("text", "image") is the baseline (1536-d input). A single modality gives the
++    matching unimodal ablation with the same head design.
++    """
++
++    def __init__(self, modalities=MODALITY_ORDER, hidden_dim: int = 512, dropout: float = 0.2,
++                 num_classes: int = 2, normalize_embeddings: bool = True) -> None:
++        super().__init__()
++        modalities = tuple(m for m in MODALITY_ORDER if m in modalities)
++        if not modalities:
++            raise ValueError("at least one modality is required")
++        self.modalities = modalities
++        self.normalize_embeddings = normalize_embeddings
++        self.input_dim = sum(FEATURE_DIMS[m] for m in modalities)
++        self.classifier = build_fusion_mlp(self.input_dim, hidden_dim, dropout, num_classes)
++
++    def fuse(self, text: torch.Tensor | None = None,
++             image: torch.Tensor | None = None) -> torch.Tensor:
++        given = {"text": text, "image": image}
++        parts = []
++        for m in self.modalities:
++            x = given[m]
++            if x is None:
++                raise ValueError(f"missing {m} features")
++            parts.append(F.normalize(x, dim=-1) if self.normalize_embeddings else x)
++        return torch.cat(parts, dim=-1)
++
++    def forward(self, text: torch.Tensor | None = None,
++                image: torch.Tensor | None = None) -> torch.Tensor:
++        return self.classifier(self.fuse(text, image))
++
++
++def build_fusion_head(config: dict) -> FusionHead:
++    fusion = config["fusion"]
++    head = FusionHead(
++        modalities=config.get("modalities", list(MODALITY_ORDER)),
++        hidden_dim=fusion["hidden_dim"],
++        dropout=fusion["dropout"],
++        num_classes=fusion["num_classes"],
++        normalize_embeddings=config["normalize_embeddings"],
++    )
++    if fusion.get("input_dim", head.input_dim) != head.input_dim:
++        raise ValueError(f"config fusion.input_dim={fusion['input_dim']} but modalities "
++                         f"{head.modalities} give {head.input_dim}")
++    return head
++
+ 
+ class MultimodalClassifier(nn.Module):
+     """Fuse 768-d text and 768-d image features into binary logits.
+@@ -24,15 +97,18 @@ class MultimodalClassifier(nn.Module):
+         dropout: float = 0.2,
+         num_classes: int = 2,
+         normalize_embeddings: bool = True,
++        text_feature: str = "first_token",
++        text_model_dir: str | None = None,
++        clip_model_dir: str | None = None,
+     ) -> None:
+         super().__init__()
+-        self.text_encoder = AutoModel.from_pretrained(
+-            text_model_id, revision=text_revision
+-        )
+-        self.clip = CLIPModel.from_pretrained(
+-            clip_model_id, revision=clip_revision
+-        )
++        # *_model_dir: local copies of the same pinned weights for machines without Hub access.
++        self.text_encoder = (AutoModel.from_pretrained(text_model_dir) if text_model_dir else
++                             AutoModel.from_pretrained(text_model_id, revision=text_revision))
++        self.clip = (CLIPModel.from_pretrained(clip_model_dir) if clip_model_dir else
++                     CLIPModel.from_pretrained(clip_model_id, revision=clip_revision))
+         self.normalize_embeddings = normalize_embeddings
++        self.text_feature = text_feature
+ 
+         for encoder in (self.text_encoder, self.clip):
+             encoder.requires_grad_(False)
+@@ -50,12 +126,7 @@ class MultimodalClassifier(nn.Module):
+         self.text_dim = text_dim
+         self.image_dim = image_dim
+         self.fusion_dim = fusion_dim
+-        self.classifier = nn.Sequential(
+-            nn.Linear(fusion_dim, hidden_dim),
+-            nn.ReLU(),
+-            nn.Dropout(dropout),
+-            nn.Linear(hidden_dim, num_classes),
+-        )
++        self.classifier = build_fusion_mlp(fusion_dim, hidden_dim, dropout, num_classes)
+ 
+     def train(self, mode: bool = True) -> "MultimodalClassifier":
+         """Train the fusion head while frozen encoders stay deterministic."""
+@@ -72,7 +143,8 @@ class MultimodalClassifier(nn.Module):
+                 input_ids=input_ids,
+                 attention_mask=attention_mask,
+             )
+-            features = output.last_hidden_state[:, 0, :]
++            features = pool_text_features(output.last_hidden_state, attention_mask,
++                                          self.text_feature)
+         if self.normalize_embeddings:
+             features = F.normalize(features, dim=-1)
+         return features
+@@ -107,7 +179,8 @@ class MultimodalClassifier(nn.Module):
+         return logits
+ 
+ 
+-def build_model(config: dict) -> MultimodalClassifier:
++def build_model(config: dict, text_model_dir: str | None = None,
++                clip_model_dir: str | None = None) -> MultimodalClassifier:
+     """Construct the baseline directly from configs/multimodal_baseline.json."""
+     fusion = config["fusion"]
+     return MultimodalClassifier(
+@@ -119,4 +192,14 @@ def build_model(config: dict) -> MultimodalClassifier:
+         dropout=fusion["dropout"],
+         num_classes=fusion["num_classes"],
+         normalize_embeddings=config["normalize_embeddings"],
++        text_feature=config.get("text_feature", "first_token"),
++        text_model_dir=text_model_dir,
++        clip_model_dir=clip_model_dir,
+     )
++
++
++def load_fusion_head(model: MultimodalClassifier, head_state_dict: dict) -> None:
++    """Put a FusionHead checkpoint (trained on cached features) into the end-to-end model."""
++    prefix = "classifier."
++    weights = {k[len(prefix):]: v for k, v in head_state_dict.items() if k.startswith(prefix)}
++    model.classifier.load_state_dict(weights, strict=True)
+diff --git a/src/multimodal/review_samples.py b/src/multimodal/review_samples.py
+new file mode 100644
+index 0000000..1d62407
+--- /dev/null
++++ b/src/multimodal/review_samples.py
+@@ -0,0 +1,93 @@
++"""Make a manual-review sheet of image-text-label triples (README 7.3 "manually verify").
++
++Picks validation samples from a run's predictions (default 4 each of TP, TN, FP, FN, seeded),
++draws image + caption + labels in one grid, and writes a CSV with empty columns for the
++reviewer to fill in.
++
++    python -m src.multimodal.review_samples --run_id 20261016_distilbert_clip_seed42
++
++Writes outputs/multimodal/<run_id>/review/{review_grid.png, manual_review.csv}.
++"""
++import argparse
++import sys
++import textwrap
++from pathlib import Path
++
++import pandas as pd
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++from src.common.data import load_image, load_split  # noqa: E402
++from src.image.safety import require_new_paths, validate_run_id  # noqa: E402
++
++GROUPS = (("TP", 1, 1), ("TN", 0, 0), ("FP", 0, 1), ("FN", 1, 0))  # name, true, predicted
++
++
++def select(preds, per_group, seed):
++    parts = []
++    for name, true, pred in GROUPS:
++        pool = preds[(preds.true_label == true) & (preds.predicted_label == pred)]
++        take = pool.sample(n=min(per_group, len(pool)), random_state=seed).sort_index()
++        parts.append(take.assign(group=name))
++    return pd.concat(parts)
++
++
++def draw(rows, path, title):
++    import matplotlib
++    matplotlib.use("Agg")
++    import matplotlib.pyplot as plt
++
++    cols = 4
++    n_rows = (len(rows) + cols - 1) // cols
++    fig, axes = plt.subplots(n_rows, cols, figsize=(4.2 * cols, 5.6 * n_rows))
++    for ax in axes.ravel():
++        ax.axis("off")
++    for ax, (_, r) in zip(axes.ravel(), rows.iterrows()):
++        image = load_image(r.image_abspath)
++        image.thumbnail((360, 360))
++        ax.imshow(image)
++        caption = textwrap.shorten(r.text_input, width=200, placeholder=" ...")
++        ax.set_title(f"{r.group}  {r.sample_id}\ntrue {r.true_label} ({r.sarcasm})  "
++                     f"pred {r.predicted_label}  p1={r.probability_1:.3f}", fontsize=9)
++        ax.text(0.0, -0.02, "\n".join(textwrap.wrap(caption, 52)[:5]), transform=ax.transAxes,
++                fontsize=7.5, va="top", ha="left", wrap=True)
++    fig.suptitle(title, fontsize=11)
++    fig.tight_layout()
++    fig.savefig(path, dpi=110)
++    plt.close(fig)
++
++
++def main():
++    ap = argparse.ArgumentParser()
++    ap.add_argument("--run_id", required=True)
++    ap.add_argument("--per_group", type=int, default=4)
++    ap.add_argument("--seed", type=int, default=42)
++    ap.add_argument("--data_dir", default=None)
++    args = ap.parse_args()
++    validate_run_id(args.run_id)
++
++    run_dir = Path("outputs/multimodal") / args.run_id
++    out_dir = run_dir / "review"
++    require_new_paths(out_dir)
++    preds = pd.read_csv(run_dir / "predictions_validation.csv", float_precision="round_trip")
++    meta = load_split("validation", args.data_dir).set_index("sample_id")
++    rows = select(preds, args.per_group, args.seed).set_index("sample_id")
++    rows = rows.join(meta[["text_input", "sarcasm", "sarcasm_binary", "image_path",
++                           "image_abspath"]]).reset_index()
++    if (rows.sarcasm_binary != rows.true_label).any():
++        raise ValueError("prediction CSV labels disagree with metadata")
++
++    out_dir.mkdir(parents=True)
++    draw(rows, out_dir / "review_grid.png",
++         f"{args.run_id} | validation | {args.per_group} per TP/TN/FP/FN (seed {args.seed})")
++    sheet = rows[["group", "sample_id", "image_path", "text_input", "sarcasm", "true_label",
++                  "predicted_label", "probability_1"]].copy()
++    for column in ("image_matches_sample_id", "caption_matches_image_text", "label_plausible",
++                   "reviewer", "notes"):
++        sheet[column] = ""
++    sheet.to_csv(out_dir / "manual_review.csv", index=False, encoding="utf-8")
++    print(f"{len(rows)} samples -> {out_dir}")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/src/multimodal/smoke_test.py b/src/multimodal/smoke_test.py
+index da4e057..5998835 100644
+--- a/src/multimodal/smoke_test.py
++++ b/src/multimodal/smoke_test.py
+@@ -11,11 +11,12 @@ import json
+ from pathlib import Path
+ 
+ import torch
+-from transformers import AutoTokenizer, CLIPProcessor
++from transformers import AutoImageProcessor, AutoTokenizer, CLIPProcessor
+ 
+ from src.common.data import load_image, load_split
+ from src.common.reproducibility import get_device, set_seed
+ from src.multimodal.model import build_model
++from src.text.encoder import text_source
+ 
+ 
+ def main() -> None:
+@@ -24,6 +25,8 @@ def main() -> None:
+     parser.add_argument("--data_dir", default=None)
+     parser.add_argument("--split", default="validation", choices=("train", "validation", "test"))
+     parser.add_argument("--batch_size", type=int, default=2)
++    parser.add_argument("--text_model_dir", default=None, help="local copy of the pinned DistilBERT")
++    parser.add_argument("--clip_model_dir", default=None, help="local copy of the pinned CLIP")
+     args = parser.parse_args()
+ 
+     config = json.loads(Path(args.config).read_text(encoding="utf-8"))
+@@ -34,11 +37,11 @@ def main() -> None:
+     texts = frame["text_input"].tolist()
+     images = [load_image(path) for path in frame["image_abspath"]]
+ 
+-    tokenizer = AutoTokenizer.from_pretrained(
+-        config["text_model_id"], revision=config["text_revision"]
+-    )
+-    clip_processor = CLIPProcessor.from_pretrained(
+-        config["clip_model_id"], revision=config["clip_revision"]
++    source, kwargs = text_source(config, args.text_model_dir)
++    tokenizer = AutoTokenizer.from_pretrained(source, **kwargs)
++    clip_processor = (
++        AutoImageProcessor.from_pretrained(args.clip_model_dir) if args.clip_model_dir else
++        CLIPProcessor.from_pretrained(config["clip_model_id"], revision=config["clip_revision"])
+     )
+     text_inputs = tokenizer(
+         texts,
+@@ -49,7 +52,7 @@ def main() -> None:
+     )
+     image_inputs = clip_processor(images=images, return_tensors="pt")
+ 
+-    model = build_model(config).to(device).eval()
++    model = build_model(config, args.text_model_dir, args.clip_model_dir).to(device).eval()
+     with torch.no_grad():
+         output = model(
+             input_ids=text_inputs["input_ids"].to(device),
+diff --git a/src/multimodal/train.py b/src/multimodal/train.py
+new file mode 100644
+index 0000000..f53c73d
+--- /dev/null
++++ b/src/multimodal/train.py
+@@ -0,0 +1,232 @@
++"""Train the multimodal fusion MLP on cached frozen features, keep the best epoch by validation
++Macro-F1, and write every output README section 6 asks for.
++
++    frozen DistilBERT [CLS] (768) --L2--\
++                                         concat (1536) -> Linear 512 -> ReLU -> Dropout -> Linear 2
++    frozen CLIP pooler_output (768) -L2-/
++
++Run the two feature extractors first (src/text/extract_features.py, src/image/extract_features.py,
++or the image group's cache zip). Then, from the repo root:
++    python -m src.multimodal.train
++    python -m src.multimodal.train --run_id 20261016_distilbert_clip_seed42
++    python -m src.multimodal.train --config configs/ablations/text_only.json --run_id ...
++
++Writes
++    outputs/multimodal/<run_id>/config.json
++    outputs/multimodal/<run_id>/metrics_validation.json
++    outputs/multimodal/<run_id>/predictions_validation.csv
++    outputs/multimodal/<run_id>/confusion_matrix_validation.png
++    outputs/multimodal/<run_id>/training_log.csv
++    outputs/multimodal/<run_id>/README.md
++    checkpoints/multimodal/<run_id>/best.pt      (NOT for GitHub -> copy to Google Drive)
++"""
++import argparse
++import datetime as dt
++import json
++import platform
++import sys
++import time
++from pathlib import Path
++
++import pandas as pd
++import torch
++from torch import nn
++from torch.utils.data import DataLoader, TensorDataset
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++from src.common.metrics import (class_weights_from_labels, compute_metrics,  # noqa: E402
++                                get_confusion_matrix, majority_baseline, metrics_json,
++                                predictions_frame, save_confusion_matrix_png, save_json)
++from src.common.reproducibility import get_device, set_seed  # noqa: E402
++from src.image.safety import require_new_paths, validate_run_id  # noqa: E402
++from src.multimodal.features import (DEFAULT_IMAGE_FEATURES_DIR,  # noqa: E402
++                                     default_text_features_dir, load_split_features)
++from src.multimodal.model import build_fusion_head  # noqa: E402
++
++
++def as_inputs(head, tensors):
++    """Positional cached tensors (in head.modalities order) -> keyword inputs for FusionHead."""
++    return dict(zip(head.modalities, tensors))
++
++
++@torch.no_grad()
++def predict(head, features, device, batch_size=1024):
++    """Return P(class 1) for every row."""
++    head.eval()
++    xs = [features[m] for m in head.modalities]
++    probs = []
++    for i in range(0, len(xs[0]), batch_size):
++        logits = head(**as_inputs(head, [x[i:i + batch_size].to(device) for x in xs]))
++        probs.append(torch.softmax(logits, dim=1)[:, 1].cpu())
++    return torch.cat(probs)
++
++
++@torch.no_grad()
++def eval_loss(head, features, y, loss_fn, device):
++    head.eval()
++    logits = head(**as_inputs(head, [features[m].to(device) for m in head.modalities]))
++    return loss_fn(logits, y.to(device)).item()
++
++
++def feature_meta(directory):
++    path = Path(directory) / "meta.json"
++    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
++
++
++def main():
++    ap = argparse.ArgumentParser()
++    ap.add_argument("--config", default="configs/multimodal_baseline.json")
++    ap.add_argument("--text_features_dir", default=None,
++                    help="default: features/distilbert_<text_feature>")
++    ap.add_argument("--image_features_dir", default=DEFAULT_IMAGE_FEATURES_DIR)
++    ap.add_argument("--data_dir", default=None, help="dataset metadata for cache validation")
++    ap.add_argument("--run_id", default=None, help="default: YYYYMMDD_<model_name>_seed<seed>")
++    ap.add_argument("--seed", type=int, default=None, help="override the config seed")
++    args = ap.parse_args()
++
++    cfg = json.loads(Path(args.config).read_text(encoding="utf-8"))
++    if args.seed is not None:
++        cfg["seed"] = args.seed
++    seed, threshold = cfg["seed"], cfg["threshold"]
++    model_name = cfg["model_name"]
++    run_id = args.run_id or f"{dt.date.today():%Y%m%d}_{model_name}_seed{seed}"
++    validate_run_id(run_id)
++    out_dir = Path("outputs/multimodal") / run_id
++    ckpt_dir = Path("checkpoints/multimodal") / run_id
++    require_new_paths(out_dir, ckpt_dir)
++
++    set_seed(seed)
++    device = get_device()
++    modalities = cfg.get("modalities", ["text", "image"])
++    text_dir = Path(args.text_features_dir or default_text_features_dir(cfg))
++    image_dir = Path(args.image_features_dir)
++
++    # ---------------- data: cached frozen-encoder vectors, joined on sample_id ----------------
++    _, f_train, y_train = load_split_features(cfg, "train", text_dir, image_dir, args.data_dir)
++    val_ids, f_val, y_val = load_split_features(cfg, "validation", text_dir, image_dir,
++                                                args.data_dir)
++    ckpt_dir.mkdir(parents=True, exist_ok=False)
++    try:
++        out_dir.mkdir(parents=True, exist_ok=False)
++    except OSError:
++        ckpt_dir.rmdir()  # remove only this invocation's empty reservation
++        raise
++    shapes = {m: tuple(f_train[m].shape) for m in f_train}
++    print(f"device={device}  modalities={modalities}  train={shapes}  validation={len(val_ids)}")
++
++    weights = class_weights_from_labels(y_train.numpy())  # from TRAIN only (README 5.2)
++    print(f"class weights (train only): w0={weights[0]:.3f}  w1={weights[1]:.3f}")
++
++    head = build_fusion_head(cfg).to(device)
++    g = torch.Generator().manual_seed(seed)  # reproducible shuffling
++    train_loader = DataLoader(TensorDataset(*[f_train[m] for m in head.modalities], y_train),
++                              batch_size=cfg["batch_size"], shuffle=True, generator=g)
++    loss_fn = nn.CrossEntropyLoss(weight=torch.tensor(weights, dtype=torch.float32, device=device))
++    optimizer = torch.optim.AdamW(head.parameters(), lr=cfg["lr"], weight_decay=cfg["weight_decay"])
++    n_params = sum(p.numel() for p in head.parameters() if p.requires_grad)
++    print(f"fusion head: input {head.input_dim} -> {cfg['fusion']['hidden_dim']} -> "
++          f"{cfg['fusion']['num_classes']}  trainable parameters {n_params:,}")
++
++    # ---------------- training loop ----------------
++    log, best = [], {"macro_f1": -1.0}
++    t0 = time.time()
++    for epoch in range(1, cfg["epochs"] + 1):
++        head.train()
++        running, n_seen = 0.0, 0
++        for *xs, yb in train_loader:
++            yb = yb.to(device)
++            logits = head(**as_inputs(head, [x.to(device) for x in xs]))
++            loss = loss_fn(logits, yb)            # weighted cross-entropy
++            optimizer.zero_grad()
++            loss.backward()
++            optimizer.step()
++            running += loss.item() * len(yb)
++            n_seen += len(yb)
++
++        prob_val = predict(head, f_val, device)
++        pred_val = (prob_val >= threshold).long()
++        m = compute_metrics(y_val.numpy(), pred_val.numpy())
++        val_loss = eval_loss(head, f_val, y_val, loss_fn, device)
++        log.append({"epoch": epoch, "train_loss": round(running / n_seen, 6),
++                    "val_loss": round(val_loss, 6), "val_macro_f1": round(m["macro_f1"], 6),
++                    "val_accuracy": round(m["accuracy"], 6)})
++        flag = ""
++        if m["macro_f1"] > best["macro_f1"]:     # keep the best epoch (README 5.1)
++            best = {**m, "epoch": epoch, "val_loss": val_loss, "prob": prob_val.clone(),
++                    "pred": pred_val.clone()}
++            torch.save({"state_dict": head.state_dict(), "config": cfg, "epoch": epoch,
++                        "val_macro_f1": m["macro_f1"], "class_weights": weights,
++                        "modalities": list(head.modalities),
++                        "text_features_dir": str(text_dir) if "text" in head.modalities else None,
++                        "image_features_dir": str(image_dir) if "image" in head.modalities else None},
++                       ckpt_dir / "best.pt")
++            flag = "  <- best so far, saved"
++        print(f"epoch {epoch:>3}  train_loss {running / n_seen:.4f}  val_loss {val_loss:.4f}  "
++              f"val_macroF1 {m['macro_f1']:.4f}  val_acc {m['accuracy']:.4f}{flag}")
++    train_secs = time.time() - t0
++
++    # ---------------- outputs (README 6) ----------------
++    cm = get_confusion_matrix(y_val.numpy(), best["pred"].numpy())
++    pd.DataFrame(log).to_csv(out_dir / "training_log.csv", index=False)
++    preds = predictions_frame(val_ids, y_val.numpy(), best["pred"].numpy(), best["prob"].numpy(),
++                              model_name, "validation", seed)
++    preds.to_csv(out_dir / "predictions_validation.csv", index=False)
++    save_json(metrics_json(model_name, "validation", seed, threshold, best, train_secs,
++                           validation_loss=round(best["val_loss"], 6), best_epoch=best["epoch"]),
++              out_dir / "metrics_validation.json")
++    save_confusion_matrix_png(cm, out_dir / "confusion_matrix_validation.png",
++                              f"{model_name} | validation | epoch {best['epoch']}")
++
++    import transformers  # only for recording the version
++    save_json({**cfg, "run_id": run_id,
++               "text_features_dir": str(text_dir) if "text" in modalities else None,
++               "image_features_dir": str(image_dir) if "image" in modalities else None,
++               "text_feature_meta": feature_meta(text_dir) if "text" in modalities else None,
++               "image_feature_meta": feature_meta(image_dir) if "image" in modalities else None,
++               "class_weights": weights, "trainable_parameters": n_params,
++               "device": str(device), "python": platform.python_version(),
++               "torch": torch.__version__, "transformers": transformers.__version__,
++               "torch_threads": torch.get_num_threads(), "best_epoch": best["epoch"],
++               "checkpoint": str(ckpt_dir / "best.pt"),
++               "command": "python -m src.multimodal.train " + " ".join(sys.argv[1:])},
++              out_dir / "config.json")
++
++    maj = majority_baseline(y_val.numpy())
++    text_arg = f' --text_features_dir "{text_dir}"' if "text" in modalities else ""
++    image_arg = f' --image_features_dir "{image_dir}"' if "image" in modalities else ""
++    (out_dir / "README.md").write_text(
++        f"# {run_id}\n\n"
++        f"{model_name}: modalities {' + '.join(head.modalities)}, frozen encoders, cached features "
++        f"(text `{cfg['text_feature']}`, image `{cfg['image_feature']}`), "
++        f"{'L2-normalized, ' if cfg['normalize_embeddings'] else ''}"
++        f"MLP {head.input_dim} -> {cfg['fusion']['hidden_dim']} -> {cfg['fusion']['num_classes']}, "
++        f"seed {seed}, device {device}.\n\n"
++        "## Reproduce\n\n```\n"
++        "# Set MEMOTION_DATA_DIR and choose an unused run_id.\n"
++        f'python -m src.multimodal.train --config "{args.config}"{text_arg}{image_arg} '
++        f"--seed {seed} --run_id {run_id}_reproduction\n"
++        "python -m scripts.verify_predictions "
++        f"outputs/multimodal/{run_id}_reproduction/predictions_validation.csv\n"
++        f"python -m src.multimodal.evaluate --run_id {run_id}   # reload the saved head\n```\n\n"
++        "## Validation (best epoch by Macro-F1)\n\n"
++        "| model | Macro-F1 | Accuracy | F1 class 0 | F1 class 1 | best epoch | train time |\n"
++        "|---|---:|---:|---:|---:|---:|---:|\n"
++        f"| majority (always 1) | {maj['macro_f1']:.4f} | {maj['accuracy']:.4f} | "
++        f"{maj['f1_0']:.4f} | {maj['f1_1']:.4f} | - | - |\n"
++        f"| {model_name} | {best['macro_f1']:.4f} | {best['accuracy']:.4f} | {best['f1_0']:.4f} | "
++        f"{best['f1_1']:.4f} | {best['epoch']} | {train_secs:.1f}s |\n\n"
++        f"Confusion matrix (rows true 0/1, cols predicted 0/1): {cm.tolist()}\n\n"
++        f"Checkpoint (not in git): `{ckpt_dir / 'best.pt'}`\n", encoding="utf-8")
++
++    print("\n=== best epoch", best["epoch"], "===")
++    print(f"validation  Macro-F1 {best['macro_f1']:.4f}  Accuracy {best['accuracy']:.4f}  "
++          f"F1_0 {best['f1_0']:.4f}  F1_1 {best['f1_1']:.4f}")
++    print(f"majority    Macro-F1 {maj['macro_f1']:.4f}  Accuracy {maj['accuracy']:.4f}")
++    print("confusion matrix [rows true 0/1, cols pred 0/1]:", cm.tolist())
++    print(f"training time {train_secs:.1f}s")
++    print("outputs ->", out_dir, "   checkpoint ->", ckpt_dir / "best.pt")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/src/text/cache.py b/src/text/cache.py
+new file mode 100644
+index 0000000..5cbdb44
+--- /dev/null
++++ b/src/text/cache.py
+@@ -0,0 +1,53 @@
++"""Validate complete frozen-DistilBERT feature caches (same layout and checks as src/image/cache.py)."""
++import json
++from pathlib import Path
++
++import torch
++
++from src.common.data import load_split
++from src.common.labels import EXPECTED_SPLIT_SIZES
++from src.image.cache import file_sha256
++
++TEXT_DIM = 768
++
++
++def load_text_features(features_dir, split, config, data_dir=None):
++    """Return (sample_ids, FloatTensor[N, 768], LongTensor[N]) after checking provenance and alignment.
++
++    `config` needs text_model_id, text_feature and text_max_length (configs/multimodal_baseline.json).
++    """
++    features_dir = Path(features_dir)
++    meta = json.loads((features_dir / "meta.json").read_text(encoding="utf-8"))
++    if meta.get("limit") is not None:
++        raise ValueError("Smoke/limited caches cannot be used for formal training or evaluation.")
++    for key, expected in (("text_model_id", config["text_model_id"]),
++                          ("text_feature", config["text_feature"]),
++                          ("max_length", config["text_max_length"])):
++        if meta.get(key) != expected:
++            raise ValueError(f"Cache {key}={meta.get(key)!r}; expected {expected!r}")
++    count = EXPECTED_SPLIT_SIZES[split]
++    record = meta.get("splits", {}).get(split, {})
++    if record.get("n") != count or record.get("dim") != TEXT_DIM:
++        raise ValueError(f"Incomplete or incompatible {split} cache metadata: {record}")
++    path = features_dir / f"{split}.pt"
++    if record.get("sha256") and file_sha256(path) != record["sha256"]:
++        raise ValueError(f"{split}: feature cache SHA-256 mismatch")
++    cached = torch.load(path, map_location="cpu", weights_only=True)
++    ids, x, y = cached["sample_id"], cached["features"], cached["labels"]
++    if not isinstance(ids, list) or len(ids) != count or any(not isinstance(i, str) for i in ids):
++        raise ValueError(f"{split}: expected {count} string sample IDs")
++    if len(set(ids)) != count:
++        raise ValueError(f"{split}: duplicate sample IDs")
++    if not isinstance(x, torch.Tensor) or x.shape != (count, TEXT_DIM) or x.dtype != torch.float32:
++        raise ValueError(f"{split}: expected float32 features of shape ({count}, {TEXT_DIM})")
++    if not torch.isfinite(x).all():
++        raise ValueError(f"{split}: NaN/inf in features")
++    if not isinstance(y, torch.Tensor) or y.shape != (count,) or y.dtype != torch.int64:
++        raise ValueError(f"{split}: expected int64 labels of shape ({count},)")
++    truth = load_split(split, data_dir)
++    if len(truth) != count or ids != truth["sample_id"].tolist():
++        raise ValueError(f"{split}: sample IDs/order differ from the complete dataset")
++    expected_y = torch.tensor(truth["sarcasm_binary"].to_numpy(), dtype=torch.long)
++    if not torch.equal(y, expected_y):
++        raise ValueError(f"{split}: labels differ from dataset metadata")
++    return ids, x.float(), y
+diff --git a/src/text/encoder.py b/src/text/encoder.py
+new file mode 100644
+index 0000000..58e3f5b
+--- /dev/null
++++ b/src/text/encoder.py
+@@ -0,0 +1,52 @@
++"""Frozen DistilBERT encoder and the sentence vectors we take from it.
++
++Which 768-d vector represents one meme caption?
++
++  first_token   last_hidden_state[:, 0], the final-layer state of the [CLS] token.
++                DistilBERT (Sanh et al., 2019) removed BERT's pooler and token-type embeddings,
++                so there is no `pooler_output`; Hugging Face's DistilBertForSequenceClassification
++                classifies from exactly this vector (then pre_classifier -> ReLU -> classifier).
++                This is the team baseline feature (docs/decisions.md D13).
++  mean_pooling  mean of last_hidden_state over real tokens ([CLS] and [SEP] included,
++                padding excluded via attention_mask). The usual sentence vector for a *frozen*
++                encoder (Sentence-BERT, Reimers & Gurevych, 2019); kept as an ablation.
++"""
++from __future__ import annotations
++
++import torch
++from transformers import AutoModel, AutoTokenizer
++
++TEXT_FEATURES = ("first_token", "mean_pooling")
++
++
++def text_source(cfg: dict, model_dir: str | None = None) -> tuple[str, dict]:
++    """Hub id + pinned revision by default; a local copy of the same weights when offline."""
++    if model_dir:
++        return str(model_dir), {}
++    return cfg["text_model_id"], {"revision": cfg["text_revision"]}
++
++
++def load_text_encoder(cfg: dict, device: torch.device, model_dir: str | None = None):
++    """Tokenizer + frozen DistilBertModel in eval mode (MLM-head weights are not loaded)."""
++    source, kwargs = text_source(cfg, model_dir)
++    tokenizer = AutoTokenizer.from_pretrained(source, **kwargs)
++    model = AutoModel.from_pretrained(source, **kwargs)
++    model.eval().to(device)
++    model.requires_grad_(False)
++    return tokenizer, model
++
++
++def tokenize(tokenizer, texts: list[str], max_length: int) -> dict:
++    """[CLS] text [SEP], WordPiece (uncased), truncated to max_length, padded to the batch maximum."""
++    return tokenizer(texts, padding=True, truncation=True, max_length=max_length,
++                     return_tensors="pt")
++
++
++def pool_text_features(last_hidden_state: torch.Tensor, attention_mask: torch.Tensor,
++                       how: str) -> torch.Tensor:
++    if how == "first_token":
++        return last_hidden_state[:, 0, :]
++    if how == "mean_pooling":
++        mask = attention_mask.unsqueeze(-1).to(last_hidden_state.dtype)
++        return (last_hidden_state * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1.0)
++    raise ValueError(f"unknown text feature {how!r}; expected one of {TEXT_FEATURES}")
+diff --git a/src/text/extract_features.py b/src/text/extract_features.py
+new file mode 100644
+index 0000000..3d29def
+--- /dev/null
++++ b/src/text/extract_features.py
+@@ -0,0 +1,162 @@
++"""Run the frozen DistilBERT encoder over every `text_input` ONCE and cache 768-d sentence vectors.
++
++Same idea as src/image/extract_features.py: the encoder is frozen, so a caption's vector never
++changes, and the fusion MLP can then be trained in seconds on CPU. One pass writes both pooled
++vectors described in src/text/encoder.py into two caches:
++
++    <out_prefix>_first_token/<split>.pt    [CLS] state      (baseline, decisions D13)
++    <out_prefix>_mean_pooling/<split>.pt   masked mean      (ablation)
++        -> {"sample_id": list[str], "features": FloatTensor[N, 768], "labels": LongTensor[N]}
++    <out_prefix>_<feature>/meta.json       model revision, tokenizer settings, truncation counts
++
++Tokenization follows README 4.1: the model's own uncased WordPiece tokenizer, [CLS] ... [SEP],
++max length 128 with truncation; `[NO_TEXT]` (shared loader) is encoded like any other caption.
++
++Usage (repo root, MEMOTION_DATA_DIR set):
++    python -m src.text.extract_features                               # train validation test
++    python -m src.text.extract_features --limit 64 --splits validation    # separate smoke cache
++    python -m src.text.extract_features --model_dir hf_local/distilbert-base-uncased   # offline copy
++"""
++import argparse
++import hashlib
++import json
++import sys
++import time
++from pathlib import Path
++
++import torch
++import transformers
++from tqdm import tqdm
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++from src.common.data import NO_TEXT, SPLITS, load_split  # noqa: E402
++from src.common.reproducibility import get_device, set_seed  # noqa: E402
++from src.image.cache import file_sha256  # noqa: E402
++from src.image.safety import require_new_paths  # noqa: E402
++from src.text.encoder import (TEXT_FEATURES, load_text_encoder, pool_text_features,  # noqa: E402
++                              tokenize)
++
++
++def weights_sha256(model_dir):
++    """Hash of the local weight file, recorded so an offline copy can be traced."""
++    for name in ("model.safetensors", "pytorch_model.bin"):
++        path = Path(model_dir) / name
++        if path.is_file():
++            with path.open("rb") as stream:
++                return name, hashlib.file_digest(stream, "sha256").hexdigest()
++    return None, None
++
++
++@torch.no_grad()
++def extract_split(split, tokenizer, model, device, batch_size, max_length, data_dir, limit=None):
++    df = load_split(split, data_dir)
++    if limit:
++        df = df.head(limit)
++    texts = df["text_input"].tolist()
++
++    pooled = {how: [] for how in TEXT_FEATURES}
++    lengths = []
++    for start in tqdm(range(0, len(texts), batch_size), desc=f"{split:>10}"):
++        batch = texts[start:start + batch_size]
++        enc = tokenize(tokenizer, batch, max_length)
++        hidden = model(input_ids=enc["input_ids"].to(device),
++                       attention_mask=enc["attention_mask"].to(device)).last_hidden_state
++        mask = enc["attention_mask"].to(device)
++        for how in TEXT_FEATURES:
++            pooled[how].append(pool_text_features(hidden, mask, how).float().cpu())
++        # untruncated length (with [CLS]/[SEP]) to report how many captions lose tokens at 128
++        lengths += [len(ids) for ids in tokenizer(batch, truncation=False)["input_ids"]]
++
++    labels = torch.tensor(df["sarcasm_binary"].to_numpy(), dtype=torch.long)
++    lengths_t = torch.tensor(lengths, dtype=torch.float32)
++    stats = {
++        "no_text": int((df["text_input"] == NO_TEXT).sum()),
++        "truncated_at_max_length": int((lengths_t > max_length).sum()),
++        "tokens_mean": round(float(lengths_t.mean()), 2),
++        "tokens_median": float(lengths_t.median()),
++        "tokens_max": int(lengths_t.max()),
++    }
++    results = {how: {"sample_id": df["sample_id"].tolist(), "features": torch.cat(chunks),
++                     "labels": labels} for how, chunks in pooled.items()}
++    return results, stats
++
++
++def main():
++    ap = argparse.ArgumentParser()
++    ap.add_argument("--config", default="configs/multimodal_baseline.json")
++    ap.add_argument("--data_dir", default=None)
++    ap.add_argument("--model_dir", default=None,
++                    help="local copy of distilbert-base-uncased; default loads the pinned Hub revision")
++    ap.add_argument("--out_prefix", default=None,
++                    help="caches go to <out_prefix>_first_token and <out_prefix>_mean_pooling "
++                         "(must be new); default features/distilbert")
++    ap.add_argument("--splits", nargs="+", choices=SPLITS, default=list(SPLITS))
++    ap.add_argument("--batch_size", type=int, default=32)
++    ap.add_argument("--limit", type=int, default=None, help="only the first N rows (smoke test)")
++    args = ap.parse_args()
++    if args.batch_size <= 0 or (args.limit is not None and args.limit <= 0):
++        ap.error("batch_size and limit must be positive")
++    if len(set(args.splits)) != len(args.splits):
++        ap.error("splits must not contain duplicates")
++    prefix = args.out_prefix or "features/distilbert"
++    if args.limit is not None and args.out_prefix is None:
++        prefix += f"_smoke_{args.limit}"
++    out_dirs = {how: Path(f"{prefix}_{how}") for how in TEXT_FEATURES}
++    require_new_paths(*out_dirs.values())  # fail before loading DistilBERT
++
++    cfg = json.loads(Path(args.config).read_text(encoding="utf-8"))
++    set_seed(cfg["seed"])
++    device = get_device()
++    max_length = cfg["text_max_length"]
++    source = args.model_dir or f"{cfg['text_model_id']}@{cfg['text_revision']}"
++    print(f"device={device}  model={source}  max_length={max_length}")
++
++    tokenizer, model = load_text_encoder(cfg, device, args.model_dir)
++    weight_file, weight_hash = weights_sha256(args.model_dir) if args.model_dir else (None, None)
++    for out_dir in out_dirs.values():
++        out_dir.mkdir(parents=True, exist_ok=False)
++
++    base_meta = {
++        "text_model_id": cfg["text_model_id"],
++        "text_revision_requested": cfg["text_revision"],
++        "text_commit_resolved": getattr(model.config, "_commit_hash", None),
++        "text_weights_source": "local_dir" if args.model_dir else "hub",
++        "text_weights_file": weight_file,
++        "text_weights_sha256": weight_hash,
++        "tokenizer": type(tokenizer).__name__,
++        "do_lower_case": bool(getattr(tokenizer, "do_lower_case", True)),
++        "max_length": max_length,
++        "truncation": True,
++        "padding": "longest_in_batch",
++        "batch_size": args.batch_size,
++        "torch": torch.__version__,
++        "transformers": transformers.__version__,
++        "device": str(device),
++        "limit": args.limit,
++    }
++    metas = {how: {**base_meta, "text_feature": how, "splits": {}} for how in TEXT_FEATURES}
++    for split in args.splits:
++        t0 = time.time()
++        results, stats = extract_split(split, tokenizer, model, device, args.batch_size,
++                                       max_length, args.data_dir, args.limit)
++        secs = time.time() - t0
++        for how, res in results.items():
++            f = res["features"]
++            assert len(res["sample_id"]) == f.shape[0] == res["labels"].shape[0]
++            assert torch.isfinite(f).all(), f"{split}/{how}: NaN/inf in features"
++            path = out_dirs[how] / f"{split}.pt"
++            torch.save(res, path)
++            metas[how]["splits"][split] = {"n": f.shape[0], "dim": f.shape[1],
++                                           "seconds": round(secs, 1), "sha256": file_sha256(path),
++                                           **stats}
++            print(f"  saved {path}  shape={tuple(f.shape)}")
++        print(f"  {split}: {secs:.1f}s  {stats}")
++
++    for how, out_dir in out_dirs.items():
++        (out_dir / "meta.json").write_text(json.dumps(metas[how], indent=2), encoding="utf-8")
++    print("done. meta ->", ", ".join(str(d / "meta.json") for d in out_dirs.values()))
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/tests/test_multimodal_pipeline.py b/tests/test_multimodal_pipeline.py
+new file mode 100644
+index 0000000..b90c9cd
+--- /dev/null
++++ b/tests/test_multimodal_pipeline.py
+@@ -0,0 +1,211 @@
++"""Tests for the DistilBERT text cache and the multimodal fusion pipeline (no encoder download).
++
++Run from the repository root with MEMOTION_DATA_DIR pointing at the fixed dataset:
++    python -m unittest discover -s tests -v
++"""
++import copy
++import json
++from pathlib import Path
++import subprocess
++import sys
++import tempfile
++import unittest
++from types import SimpleNamespace
++from unittest.mock import patch
++
++import torch
++import torch.nn.functional as F
++
++from src.common.data import load_split
++from src.common.labels import EXPECTED_SPLIT_SIZES
++from src.image.cache import file_sha256
++from src.multimodal.features import align_by_sample_id, load_split_features
++from src.multimodal.model import (FusionHead, build_fusion_head, build_fusion_mlp,
++                                  load_fusion_head)
++from src.text.cache import load_text_features
++from src.text.encoder import pool_text_features
++
++ROOT = Path(__file__).resolve().parents[1]
++CFG = json.loads((ROOT / "configs/multimodal_baseline.json").read_text(encoding="utf-8"))
++
++
++def text_meta(splits, **changes):
++    meta = dict(text_model_id=CFG["text_model_id"], text_revision_requested=CFG["text_revision"],
++                text_feature=CFG["text_feature"], max_length=CFG["text_max_length"], limit=None,
++                splits={s: {"n": EXPECTED_SPLIT_SIZES[s], "dim": 768} for s in splits})
++    meta.update(changes)
++    return meta
++
++
++def image_meta(splits):
++    return dict(clip_model_id=CFG["clip_model_id"], clip_revision_requested=CFG["clip_revision"],
++                feature=CFG["image_feature"], limit=None,
++                splits={s: {"n": EXPECTED_SPLIT_SIZES[s], "dim": 768} for s in splits})
++
++
++def write_cache(directory, split, features, meta, order=None):
++    truth = load_split(split)
++    ids = truth.sample_id.tolist()
++    labels = torch.tensor(truth.sarcasm_binary.to_numpy(), dtype=torch.long)
++    if order is not None:
++        ids, labels, features = [ids[i] for i in order], labels[order], features[order]
++    directory.mkdir(parents=True, exist_ok=True)
++    torch.save(dict(sample_id=ids, features=features, labels=labels), directory / f"{split}.pt")
++    meta["splits"][split]["sha256"] = file_sha256(directory / f"{split}.pt")
++    (directory / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
++
++
++class MultimodalPipelineTests(unittest.TestCase):
++    def setUp(self):
++        self.temp = tempfile.TemporaryDirectory(prefix="multimodal_pipeline_")
++        self.work = Path(self.temp.name).resolve()
++        self.addCleanup(self.temp.cleanup)
++
++    def test_text_cache_accepts_complete_and_rejects_wrong_provenance(self):
++        directory = self.work / "text"
++        n = EXPECTED_SPLIT_SIZES["validation"]
++        write_cache(directory, "validation", torch.randn(n, 768), text_meta(["validation"]))
++        ids, x, y = load_text_features(directory, "validation", CFG)
++        self.assertEqual(ids, load_split("validation").sample_id.tolist())
++        self.assertEqual(tuple(x.shape), (n, 768))
++        for key, value in (("limit", 64), ("text_feature", "mean_pooling"), ("max_length", 512),
++                           ("text_model_id", "bert-base-uncased")):
++            with self.subTest(key=key):
++                write_cache(directory, "validation", torch.randn(n, 768),
++                            text_meta(["validation"], **{key: value}))
++                with self.assertRaises(ValueError):
++                    load_text_features(directory, "validation", CFG)
++
++    def test_text_cache_rejects_shuffled_rows_and_changed_values(self):
++        directory = self.work / "text"
++        n = EXPECTED_SPLIT_SIZES["validation"]
++        order = torch.randperm(n, generator=torch.Generator().manual_seed(0))
++        write_cache(directory, "validation", torch.randn(n, 768), text_meta(["validation"]), order)
++        with self.assertRaisesRegex(ValueError, "order"):
++            load_text_features(directory, "validation", CFG)
++        write_cache(directory, "validation", torch.randn(n, 768), text_meta(["validation"]))
++        cached = torch.load(directory / "validation.pt", weights_only=True)
++        cached["features"][0, 0] += 1
++        torch.save(cached, directory / "validation.pt")
++        with self.assertRaisesRegex(ValueError, "SHA-256"):
++            load_text_features(directory, "validation", CFG)
++
++    def test_alignment_uses_sample_id_not_row_number(self):
++        ids = ["a", "b", "c"]
++        x = torch.tensor([[1.0], [2.0], [3.0]])
++        y = torch.tensor([0, 1, 1])
++        x2, y2 = align_by_sample_id(["c", "a", "b"], x[[2, 0, 1]], y[[2, 0, 1]], ids)
++        self.assertTrue(torch.equal(x2, x))
++        self.assertTrue(torch.equal(y2, y))
++        with self.assertRaises(ValueError):
++            align_by_sample_id(["a", "b", "d"], x, y, ids)
++
++    def test_joint_loader_aligns_text_and_image(self):
++        n = EXPECTED_SPLIT_SIZES["validation"]
++        text, image = torch.randn(n, 768), torch.randn(n, 768)
++        write_cache(self.work / "text", "validation", text, text_meta(["validation"]))
++        write_cache(self.work / "image", "validation", image, image_meta(["validation"]))
++        ids, feats, y = load_split_features(CFG, "validation", self.work / "text",
++                                            self.work / "image")
++        self.assertEqual(ids, load_split("validation").sample_id.tolist())
++        self.assertTrue(torch.equal(feats["text"], text))
++        self.assertTrue(torch.equal(feats["image"], image))
++
++    def test_fusion_head_normalizes_then_concatenates_text_first(self):
++        head = build_fusion_head(CFG)
++        self.assertEqual(head.input_dim, 1536)
++        text, image = torch.randn(5, 768) * 7, torch.randn(5, 768) * 0.1
++        fused = head.fuse(text, image)
++        self.assertTrue(torch.allclose(fused, torch.cat([F.normalize(text, dim=-1),
++                                                         F.normalize(image, dim=-1)], dim=-1)))
++        unimodal = FusionHead(modalities=["image"])
++        self.assertEqual(unimodal.input_dim, 768)
++        with self.assertRaises(ValueError):
++            unimodal(text=text)
++        wrong = copy.deepcopy(CFG)
++        wrong["modalities"] = ["text"]
++        with self.assertRaisesRegex(ValueError, "input_dim"):
++            build_fusion_head(wrong)
++
++    def test_head_checkpoint_loads_into_end_to_end_classifier(self):
++        torch.manual_seed(0)
++        head = build_fusion_head(CFG).eval()
++        stand_in = SimpleNamespace(classifier=build_fusion_mlp(1536).eval())
++        load_fusion_head(stand_in, head.state_dict())
++        text, image = torch.randn(4, 768), torch.randn(4, 768)
++        with torch.no_grad():
++            self.assertTrue(torch.equal(stand_in.classifier(head.fuse(text, image)),
++                                        head(text, image)))
++
++    def test_pooling_ignores_padding(self):
++        hidden = torch.randn(2, 5, 768)
++        mask = torch.tensor([[1, 1, 1, 0, 0], [1, 1, 1, 1, 1]])
++        hidden_garbage = hidden.clone()
++        hidden_garbage[0, 3:] = 1e6
++        mean = pool_text_features(hidden_garbage, mask, "mean_pooling")
++        self.assertTrue(torch.allclose(mean[0], hidden[0, :3].mean(0), atol=1e-5))
++        self.assertTrue(torch.allclose(mean[1], hidden[1].mean(0), atol=1e-5))
++        self.assertTrue(torch.equal(pool_text_features(hidden, mask, "first_token"), hidden[:, 0]))
++        with self.assertRaises(ValueError):
++            pool_text_features(hidden, mask, "pooler_output")
++
++    def test_text_extraction_refuses_existing_cache_before_loading_model(self):
++        from src.text import extract_features
++        existing = self.work / "features/distilbert_first_token"
++        existing.mkdir(parents=True)
++        (existing / "train.pt").write_bytes(b"full cache")
++        with patch.object(sys, "argv", ["extract", "--out_prefix",
++                                        str(self.work / "features/distilbert")]), \
++                patch.object(extract_features, "load_text_encoder") as loader, \
++                self.assertRaises(FileExistsError):
++            extract_features.main()
++        loader.assert_not_called()
++        self.assertEqual((existing / "train.pt").read_bytes(), b"full cache")
++
++    def run_cli(self, *args):
++        result = subprocess.run([sys.executable, *map(str, args)], cwd=self.work,
++                                capture_output=True, text=True, encoding="utf-8",
++                                errors="replace", timeout=600)
++        return result
++
++    def test_train_evaluate_round_trip_on_synthetic_caches(self):
++        generator = torch.Generator().manual_seed(0)
++        for split in ("train", "validation"):
++            n = EXPECTED_SPLIT_SIZES[split]
++            write_cache(self.work / "text", split, torch.randn(n, 768, generator=generator),
++                        text_meta(["train", "validation"]) if split == "train" else
++                        json.loads((self.work / "text/meta.json").read_text()))
++            write_cache(self.work / "image", split, torch.randn(n, 768, generator=generator),
++                        image_meta(["train", "validation"]) if split == "train" else
++                        json.loads((self.work / "image/meta.json").read_text()))
++        cfg = dict(CFG, epochs=2, batch_size=256)
++        (self.work / "cfg.json").write_text(json.dumps(cfg), encoding="utf-8")
++        train = self.run_cli(ROOT / "src/multimodal/train.py", "--config", "cfg.json",
++                             "--text_features_dir", "text", "--image_features_dir", "image",
++                             "--run_id", "synthetic")
++        self.assertEqual(train.returncode, 0, train.stdout + train.stderr)
++        run = self.work / "outputs/multimodal/synthetic"
++        for name in ("config.json", "metrics_validation.json", "predictions_validation.csv",
++                     "confusion_matrix_validation.png", "training_log.csv", "README.md"):
++            self.assertTrue((run / name).is_file(), name)
++        verify = self.run_cli(ROOT / "scripts/verify_predictions.py",
++                              run / "predictions_validation.csv")
++        self.assertEqual(verify.returncode, 0, verify.stdout + verify.stderr)
++        reload = self.run_cli(ROOT / "src/multimodal/evaluate.py", "--run_id", "synthetic")
++        self.assertEqual(reload.returncode, 0, reload.stdout + reload.stderr)
++        compare = self.run_cli(ROOT / "scripts/verify_reproduction.py",
++                               "--reference_metrics", run / "metrics_validation.json",
++                               "--candidate_metrics", run / "reeval/metrics_validation.json",
++                               "--tolerance", "0",
++                               "--reference_predictions", run / "predictions_validation.csv",
++                               "--candidate_predictions", run / "reeval/predictions_validation.csv")
++        self.assertEqual(compare.returncode, 0, compare.stdout + compare.stderr)
++        again = self.run_cli(ROOT / "src/multimodal/train.py", "--config", "cfg.json",
++                             "--text_features_dir", "text", "--image_features_dir", "image",
++                             "--run_id", "synthetic")
++        self.assertNotEqual(again.returncode, 0)
++        self.assertIn("Existing output", again.stderr)
++
++
++if __name__ == "__main__":
++    unittest.main()

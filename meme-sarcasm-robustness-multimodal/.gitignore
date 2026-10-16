@@ -1,0 +1,78 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# Local editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local secrets and machine-specific settings
+.env
+.env.*
+!.env.example
+
+# Dataset archives and local copies
+data/
+datasets/
+*.zip
+*.tar
+*.tar.gz
+
+# Downloaded models, caches, checkpoints, and extracted features
+hf_cache/
+features/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.npy
+
+# Checkpoints stay local by default. The image group's tiny linear-head
+# baseline is intentionally versioned so new members can reproduce evaluation.
+checkpoints/**
+!checkpoints/image/
+!checkpoints/image/20261001_clip_vitb32_seed42/
+!checkpoints/image/20261001_clip_vitb32_seed42/best.pt
+wandb/
+runs/
+
+# Generated experiment artifacts
+outputs/**
+!outputs/.gitkeep
+
+# Curated image handoff: one reference run and three small heads only.
+!checkpoints/image/20261001_clip_vitb32_seed42_zhihan_rtx3080/
+!checkpoints/image/20261001_clip_vitb32_seed42_zhihan_rtx3080/best.pt
+!checkpoints/image/20261006_code_fixes_validation_v2/
+!checkpoints/image/20261006_code_fixes_validation_v2/best.pt
+!outputs/
+outputs/*
+!outputs/.gitkeep
+!outputs/image/
+outputs/image/*
+!outputs/image/20261006_code_fixes_validation_v2/
+outputs/image/20261006_code_fixes_validation_v2/*
+!outputs/image/20261006_code_fixes_validation_v2/README.md
+!outputs/image/20261006_code_fixes_validation_v2/config.json
+!outputs/image/20261006_code_fixes_validation_v2/metrics_validation.json
+!outputs/image/20261006_code_fixes_validation_v2/predictions_validation.csv
+!outputs/image/20261006_code_fixes_validation_v2/training_log.csv
+!outputs/image/20261006_code_fixes_validation_v2/confusion_matrix_validation.png
+external/
+
+# Multimodal reference runs (main + independent reproduction). Other runs, checkpoints, caches
+# and step logs are in Multimodal_Assets_20261016.zip (docs/Multimodal_Assets.md).
+logs/
+!outputs/multimodal/
+outputs/multimodal/*
+!outputs/multimodal/20261016_distilbert_clip_seed42/
+!outputs/multimodal/20261016_distilbert_clip_seed42/**
+!outputs/multimodal/20261016_distilbert_clip_seed42_reproduction_cpu/
+!outputs/multimodal/20261016_distilbert_clip_seed42_reproduction_cpu/**

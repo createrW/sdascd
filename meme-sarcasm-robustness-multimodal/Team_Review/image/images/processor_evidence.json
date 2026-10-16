@@ -1,0 +1,38 @@
+[
+  {
+    "sample_id": "validation_000377",
+    "pixel_values_shape": [
+      1,
+      3,
+      224,
+      224
+    ],
+    "processor": "official CLIPProcessor",
+    "revision": "3d74acf",
+    "extra_transforms": false
+  },
+  {
+    "sample_id": "validation_000563",
+    "pixel_values_shape": [
+      1,
+      3,
+      224,
+      224
+    ],
+    "processor": "official CLIPProcessor",
+    "revision": "3d74acf",
+    "extra_transforms": false
+  },
+  {
+    "sample_id": "validation_000154",
+    "pixel_values_shape": [
+      1,
+      3,
+      224,
+      224
+    ],
+    "processor": "official CLIPProcessor",
+    "revision": "3d74acf",
+    "extra_transforms": false
+  }
+]

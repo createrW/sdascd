@@ -1,0 +1,15 @@
+{
+  "model_name": "clip_vitb32_frozen",
+  "clip_model_id": "openai/clip-vit-base-patch32",
+  "clip_revision": "3d74acf",
+  "feature": "pooler_output",
+  "seed": 42,
+  "threshold": 0.5,
+  "loss": "weighted_cross_entropy",
+  "head": {"hidden_dim": 0, "dropout": 0.0},
+  "optimizer": "adamw",
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "batch_size": 64,
+  "epochs": 30
+}

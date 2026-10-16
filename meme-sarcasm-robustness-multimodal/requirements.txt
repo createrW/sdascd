@@ -1,0 +1,16 @@
+# Direct dependencies (loose versions).
+# For the exact environment the image baseline was tested with, use requirements-lock.txt.
+#
+# Install PyTorch for YOUR machine first (https://pytorch.org/get-started/locally/):
+#   NVIDIA GPU (CUDA 12.8):      pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+#   Apple Silicon Mac / CPU-only: pip install torch torchvision
+# then:  pip install -r requirements.txt
+torch>=2.7
+torchvision>=0.22
+transformers>=5.0
+pandas>=2.2
+numpy
+scikit-learn>=1.5
+matplotlib>=3.8
+pillow>=10
+tqdm

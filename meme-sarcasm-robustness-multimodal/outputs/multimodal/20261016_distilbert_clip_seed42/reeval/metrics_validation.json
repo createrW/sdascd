@@ -1,0 +1,16 @@
+{
+  "model_name": "distilbert_clip_frozen",
+  "split": "validation",
+  "seed": 42,
+  "threshold": 0.5,
+  "macro_f1": 0.533637,
+  "accuracy": 0.656652,
+  "precision_0": 0.27933,
+  "recall_0": 0.310559,
+  "f1_0": 0.294118,
+  "precision_1": 0.786538,
+  "recall_1": 0.760223,
+  "f1_1": 0.773157,
+  "training_seconds": 0.0,
+  "checkpoint_epoch": 25
+}

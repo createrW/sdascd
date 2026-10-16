@@ -1,0 +1,29 @@
+{
+  "model_name": "distilbert_meanpool_clip_frozen",
+  "modalities": [
+    "text",
+    "image"
+  ],
+  "text_model_id": "distilbert/distilbert-base-uncased",
+  "text_revision": "1c4513b2eedbda136f57676a34eea67aba266e5c",
+  "text_feature": "mean_pooling",
+  "text_max_length": 128,
+  "clip_model_id": "openai/clip-vit-base-patch32",
+  "clip_revision": "3d74acf",
+  "image_feature": "pooler_output",
+  "normalize_embeddings": true,
+  "fusion": {
+    "input_dim": 1536,
+    "hidden_dim": 512,
+    "dropout": 0.2,
+    "num_classes": 2
+  },
+  "seed": 42,
+  "threshold": 0.5,
+  "loss": "weighted_cross_entropy",
+  "optimizer": "adamw",
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "batch_size": 16,
+  "epochs": 30
+}

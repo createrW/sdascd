@@ -1,0 +1,131 @@
+{
+  "model_name": "distilbert_clip_frozen",
+  "modalities": [
+    "text",
+    "image"
+  ],
+  "text_model_id": "distilbert/distilbert-base-uncased",
+  "text_revision": "1c4513b2eedbda136f57676a34eea67aba266e5c",
+  "text_feature": "first_token",
+  "text_max_length": 128,
+  "clip_model_id": "openai/clip-vit-base-patch32",
+  "clip_revision": "3d74acf",
+  "image_feature": "pooler_output",
+  "normalize_embeddings": true,
+  "fusion": {
+    "input_dim": 1536,
+    "hidden_dim": 512,
+    "dropout": 0.2,
+    "num_classes": 2
+  },
+  "seed": 42,
+  "threshold": 0.5,
+  "loss": "weighted_cross_entropy",
+  "optimizer": "adamw",
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "batch_size": 16,
+  "epochs": 30,
+  "run_id": "20261016_distilbert_clip_seed42_reproduction_cpu",
+  "text_features_dir": "features/reproduction_distilbert_first_token",
+  "image_features_dir": "features/clip_vitb32_pooler_cpu",
+  "text_feature_meta": {
+    "text_model_id": "distilbert/distilbert-base-uncased",
+    "text_revision_requested": "1c4513b2eedbda136f57676a34eea67aba266e5c",
+    "text_commit_resolved": null,
+    "text_weights_source": "local_dir",
+    "text_weights_file": "pytorch_model.bin",
+    "text_weights_sha256": "e60d71610916da4787c5513c81bc026d415708528295502fb3e1a6fe1485ea7c",
+    "tokenizer": "BertTokenizer",
+    "do_lower_case": true,
+    "max_length": 128,
+    "truncation": true,
+    "padding": "longest_in_batch",
+    "batch_size": 32,
+    "torch": "2.11.0+cu130",
+    "transformers": "5.18.0",
+    "device": "cpu",
+    "limit": null,
+    "text_feature": "first_token",
+    "splits": {
+      "train": {
+        "n": 5593,
+        "dim": 768,
+        "seconds": 66.1,
+        "sha256": "d3c6ffff4dbdbb267c7c0fc62840f3ba04f35d5be30a7691d2f211d36b902878",
+        "no_text": 1,
+        "truncated_at_max_length": 4,
+        "tokens_mean": 22.98,
+        "tokens_median": 20.0,
+        "tokens_max": 261
+      },
+      "validation": {
+        "n": 699,
+        "dim": 768,
+        "seconds": 7.5,
+        "sha256": "451132950c1eede676a472e1f17a82cc718033fd14e0059b334d5ed817e35cf6",
+        "no_text": 0,
+        "truncated_at_max_length": 0,
+        "tokens_mean": 23.04,
+        "tokens_median": 21.0,
+        "tokens_max": 96
+      },
+      "test": {
+        "n": 700,
+        "dim": 768,
+        "seconds": 8.9,
+        "sha256": "708e45128b06daeb3ca4c428e26a9284a791b0774f521fac7f75e3281fa28063",
+        "no_text": 3,
+        "truncated_at_max_length": 1,
+        "tokens_mean": 23.2,
+        "tokens_median": 20.0,
+        "tokens_max": 135
+      }
+    }
+  },
+  "image_feature_meta": {
+    "clip_model_id": "openai/clip-vit-base-patch32",
+    "clip_revision_requested": "3d74acf",
+    "clip_commit_resolved": null,
+    "clip_weights_source": "local_dir",
+    "image_processor": "CLIPImageProcessor",
+    "feature": "pooler_output",
+    "torch": "2.11.0+cu130",
+    "transformers": "5.18.0",
+    "device": "cpu",
+    "limit": null,
+    "splits": {
+      "train": {
+        "n": 5593,
+        "dim": 768,
+        "seconds": 758.9,
+        "sha256": "007a6c24e98a9c3acb90726163ef254615f8305457d681fe15b5c27338c790ba"
+      },
+      "validation": {
+        "n": 699,
+        "dim": 768,
+        "seconds": 21.6,
+        "sha256": "7ae1b75e2eb18f0f545e90e58f3847322bcd6b3ab8397d97f02fca6cc7f098f9"
+      },
+      "test": {
+        "n": 700,
+        "dim": 768,
+        "seconds": 21.0,
+        "sha256": "54678def3f1b9055dee28769bb2c253d9036f276b890880486697c7214e9bb72"
+      }
+    }
+  },
+  "class_weights": [
+    2.2809951060358893,
+    0.6403709640485459
+  ],
+  "trainable_parameters": 787970,
+  "device": "cpu",
+  "python": "3.12.3",
+  "torch": "2.11.0+cu130",
+  "transformers": "5.18.0",
+  "torch_threads": 4,
+  "best_epoch": 29,
+  "checkpoint": "checkpoints/multimodal/20261016_distilbert_clip_seed42_reproduction_cpu/best.pt",
+  "command": "python -m src.multimodal.train --text_features_dir features/reproduction_distilbert_first_token --image_features_dir features/clip_vitb32_pooler_cpu --run_id 20261016_distilbert_clip_seed42_reproduction_cpu"
+}

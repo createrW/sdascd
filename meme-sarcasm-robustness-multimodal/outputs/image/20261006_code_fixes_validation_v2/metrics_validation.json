@@ -1,0 +1,17 @@
+{
+  "model_name": "clip_vitb32_frozen",
+  "split": "validation",
+  "seed": 42,
+  "threshold": 0.5,
+  "macro_f1": 0.527606,
+  "accuracy": 0.626609,
+  "precision_0": 0.270642,
+  "recall_0": 0.36646,
+  "f1_0": 0.311346,
+  "precision_1": 0.787942,
+  "recall_1": 0.704461,
+  "f1_1": 0.743867,
+  "training_seconds": 2.68,
+  "validation_loss": 0.753035,
+  "best_epoch": 7
+}

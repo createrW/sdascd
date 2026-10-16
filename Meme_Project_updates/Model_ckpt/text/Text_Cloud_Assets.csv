@@ -1,0 +1,2 @@
+filename,size_bytes,sha256,extract_from,creates_directory,purpose,status
+Text_Features_DistilBERT_20261016.zip,39871951,2c6916f6d4fa575961d655332276aa9cdf1d1b663a489b9ad3e994409213200b,Repository root,features/distilbert_first_token/ features/distilbert_mean_pooling/,Frozen DistilBERT train/validation/test text caches,Prepared locally; upload pending (lfs.github.com blocked in the CPU session)

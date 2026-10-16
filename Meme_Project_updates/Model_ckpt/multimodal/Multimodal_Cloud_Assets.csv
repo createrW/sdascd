@@ -1,0 +1,2 @@
+filename,size_bytes,sha256,extract_from,creates_directory,purpose,status
+Multimodal_Assets_20261016.zip,56613660,3559ac223b6c8d754e3e6cb1ccba95a44bd02d46e05591d2a360a275ffce1860,Repository root,features/clip_vitb32_pooler_cpu/ checkpoints/multimodal/ outputs/multimodal/ outputs/image/20261006_code_fixes_validation_v2_cpu_features_check/ logs/,CPU CLIP cache with test; fusion-head checkpoints; all multimodal runs; step logs,Prepared locally; upload pending (lfs.github.com blocked in the CPU session)
