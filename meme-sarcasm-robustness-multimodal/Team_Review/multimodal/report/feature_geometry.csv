@@ -1,0 +1,4 @@
+feature,mean_pairwise_cosine,sd_pairwise_cosine,norm_of_mean_vector,top1_pc_variance_share
+text_first_token,0.897088,0.039402,0.947157,0.172528
+text_mean_pooling,0.726418,0.072650,0.852330,0.085937
+image_pooler_output,0.268385,0.083939,0.518185,0.048538

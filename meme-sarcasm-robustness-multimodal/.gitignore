@@ -67,7 +67,7 @@ outputs/image/20261006_code_fixes_validation_v2/*
 !outputs/image/20261006_code_fixes_validation_v2/confusion_matrix_validation.png
 external/
 
-# Multimodal reference runs (main + independent reproduction). Other runs, checkpoints, caches
+# Multimodal reference runs (main + rerun on CPU image features). Other runs, checkpoints, caches
 # and step logs are in Multimodal_Assets_20261016.zip (docs/Multimodal_Assets.md).
 logs/
 !outputs/multimodal/

@@ -21,9 +21,9 @@ Results, reproduction evidence and the manual review are in [Team_Review/multimo
 | Item / 项目 | Setting / 设置 | Why / 依据 |
 |---|---|---|
 | Model / 模型 | `distilbert/distilbert-base-uncased` @ `1c4513b2eedbda136f57676a34eea67aba266e5c`, `DistilBertModel` (MLM head unused) | README 4.1 |
-| Input / 输入 | `text_input` from the shared loader (= `text_corrected`; empty -> `[NO_TEXT]`) | README 3.4; the proposal encodes the corrected text |
+| Input / 输入 | `text_input` from the shared loader (= `text_corrected`, except `train_000224`, which falls back to `text_ocr`; empty -> `[NO_TEXT]`) | README 3.4; the proposal encodes the corrected text |
 | Tokenizer / 分词 | the model's own uncased WordPiece, `[CLS] text [SEP]`, `truncation=True`, `max_length=128`, padding to the longest caption in the batch with `attention_mask` | README 4.1; only 4 train + 1 test captions exceed 128 tokens (median 20) |
-| Sentence vector / 句向量 | **`first_token`**: final-layer `[CLS]` state `last_hidden_state[:, 0]` (768-d) | DistilBERT (Sanh et al., 2019) removes BERT's pooler, so there is no `pooler_output`; Hugging Face's `DistilBertForSequenceClassification`, written by the paper's authors, classifies from exactly this vector. Team decision D13. |
+| Sentence vector / 句向量 | **`first_token`**: final-layer `[CLS]` state `last_hidden_state[:, 0]` (768-d) | DistilBERT (Sanh et al., 2019) removes BERT's pooler, so there is no `pooler_output`. Hugging Face's `DistilBertForSequenceClassification` classifies from this token position, but it fine-tunes the encoder and adds a trained 768→768 pre-classifier. Here the encoder is frozen; DistilBERT had no next-sentence objective, so frozen [CLS] is not a trained sentence embedding. Team decision D13. |
 | Ablation / 对照 | `mean_pooling`: mean of `last_hidden_state` over real tokens (mask excludes padding) | Usual sentence vector for a *frozen* encoder (Sentence-BERT, Reimers & Gurevych, 2019) |
 | Mode / 模式 | `eval()`, `no_grad`, float32, raw (un-normalized) vectors cached; L2 normalization happens inside the fusion head | identical code path for cached and end-to-end inference |
 
@@ -33,9 +33,9 @@ Results, reproduction evidence and the manual review are in [Team_Review/multimo
 
 ## Image features / 图片特征
 
-The baseline uses the image group's reference cache `Image_Features_CLIP_ViTB32_20261006.zip` (SHA-256 `7a02d46b…5662`, train + validation, 768-d `pooler_output`, CUDA). It has no test split. The same encoder was therefore re-run on CPU for train/validation/test (`features/clip_vitb32_pooler_cpu`). Both caches agree to mean cosine 0.99997. The few larger gaps (minimum cosine 0.981) all come from TF32 in the CUDA patch-embedding convolution, as [the test report](../../docs/Multimodal_Test_Results.md) shows.
+The baseline uses the image group's reference cache `Image_Features_CLIP_ViTB32_20261006.zip` (SHA-256 `7a02d46b…5662`, train + validation, 768-d `pooler_output`, CUDA). It has no test split. The same encoder was therefore re-run on CPU for train/validation/test (`features/clip_vitb32_pooler_cpu`). Both caches agree to mean cosine 0.99997. The few larger gaps (38 images below 0.999, minimum 0.981) are explained by TF32 in the CUDA patch-embedding convolution. Emulating TF32 brings the six worst images to cosine 1.00000 and cuts the mean difference on 64 validation images from 1.7e-3 to 2.9e-5 ([test report](../../docs/Multimodal_Test_Results.md)).
 
-基线使用图片组的参考缓存 `Image_Features_CLIP_ViTB32_20261006.zip`（SHA-256 `7a02d46b…5662`，train + validation，768 维 `pooler_output`，CUDA 提取），其中没有 test。因此在 CPU 上用同一编码器重新提取了 train/validation/test（`features/clip_vitb32_pooler_cpu`）。两份缓存的平均余弦相似度为 0.99997；少数较大差异（最小 0.981）完全来自 CUDA patch-embedding 卷积的 TF32，见[检测报告](../../docs/Multimodal_Test_Results.md)。
+基线使用图片组的参考缓存 `Image_Features_CLIP_ViTB32_20261006.zip`（SHA-256 `7a02d46b…5662`，train + validation，768 维 `pooler_output`，CUDA 提取），其中没有 test。因此在 CPU 上用同一编码器重新提取了 train/validation/test（`features/clip_vitb32_pooler_cpu`）。两份缓存的平均余弦相似度为 0.99997；少数较大差异（38 张低于 0.999，最小 0.981）可由 CUDA patch-embedding 卷积的 TF32 解释：模拟 TF32 后，最差的 6 张余弦达到 1.00000，64 张 validation 图片的平均差从 1.7e-3 降到 2.9e-5（[检测报告](../../docs/Multimodal_Test_Results.md)）。
 
 ## Commands / 命令
 
@@ -51,7 +51,7 @@ python -m scripts.verify_dataset
 python -m src.text.extract_features
 
 # 2. image features: unzip the image group's cache at the repo root (train/validation) ...
-#    or extract all three splits yourself (~3-4 min CPU per 5.6k images):
+#    or extract all three splits yourself (~32 images/s on 4 vCPUs, i.e. ~3.5 min for 6,992 images when the CPU is not shared):
 python -m src.image.extract_features --splits train validation test --out_dir features/clip_vitb32_pooler_cpu
 
 # 3. train the fusion MLP (README 6 outputs + checkpoints/multimodal/<run_id>/best.pt)
@@ -61,7 +61,7 @@ python -m scripts.verify_predictions outputs/multimodal/20261016_distilbert_clip
 # 4. reload the saved head (compares with the reported metrics, tolerance 0.01)
 python -m src.multimodal.evaluate --run_id 20261016_distilbert_clip_seed42
 
-# 5. second-member reproduction: fresh text cache + CPU image cache, new run id
+# 5. rerun on re-extracted text + CPU image features (the teammate's second-member reproduction is still required)
 python -m src.text.extract_features --out_prefix features/reproduction_distilbert
 python -m src.multimodal.train --text_features_dir features/reproduction_distilbert_first_token \
     --image_features_dir features/clip_vitb32_pooler_cpu --run_id 20261016_distilbert_clip_seed42_reproduction_cpu
@@ -99,7 +99,7 @@ The default path loads the pinned Hub revisions. If `huggingface.co` is blocked,
 | Encoder / 编码器 | Local copy used here / 本次使用的本地副本 | Check / 校验 |
 |---|---|---|
 | DistilBERT | Hugging Face's legacy S3 files `distilbert-base-uncased-{pytorch_model.bin,config.json,tokenizer.json}` + `bert-base-uncased-vocab.txt`, plus `tokenizer_config.json` `{"do_lower_case": true, "model_max_length": 512}` | weights SHA-256 `e60d7161…ea7c` (recorded in every cache `meta.json`); 66,362,880 parameters; all 100 encoder tensors load; MLM sanity check sensible |
-| CLIP ViT-B/32 | OpenAI `ViT-B-32.pt`, converted by `scripts/convert_openai_clip_to_hf.py` | SHA-256 `40d36571…0af` = hash in OpenAI's official URL; reproduces the image group's CUDA features once TF32 is emulated (cosine 1.00000) |
+| CLIP ViT-B/32 | OpenAI `ViT-B-32.pt`, converted by `scripts/convert_openai_clip_to_hf.py` | SHA-256 `40d36571…0af` = hash in OpenAI's official URL; with TF32 emulated, the six worst-matching images reach cosine 1.00000 against the image group's CUDA features |
 
 ## Files / 文件
 

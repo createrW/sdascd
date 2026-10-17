@@ -1,8 +1,8 @@
 # External multimodal assets / 多模态外部资料
 
-**Status: prepared locally; upload pending.** The CPU session that produced them could not reach `lfs.github.com` (network policy), so the two archives are not in the repository yet. Every file in them can be regenerated on CPU in about 6 minutes with the commands in [src/multimodal/README.md](../src/multimodal/README.md); after upload, the sizes and SHA-256 below must match.
+**Status: prepared locally; upload pending.** The CPU session that produced them could not reach `lfs.github.com` (network policy), so the two archives are not in the repository yet. Every file in them can be regenerated on a 4-vCPU CPU with the commands in [src/multimodal/README.md](../src/multimodal/README.md). That takes about 1.5 min for the text features, 4–14 min for the CLIP features and about 8 min for the 14 training runs. After upload, the sizes and SHA-256 below must match.
 
-**状态：已在本地准备，尚未上传。** 生成它们的 CPU 会话无法访问 `lfs.github.com`（网络策略限制），两个压缩包暂未进入仓库。其中所有文件都可以按 [src/multimodal/README.md](../src/multimodal/README.md) 的命令在 CPU 上约 6 分钟重新生成；上传后大小与 SHA-256 应与下表一致。
+**状态：已在本地准备，尚未上传。** 生成它们的 CPU 会话无法访问 `lfs.github.com`（网络策略限制），两个压缩包暂未进入仓库。其中所有文件都可以按 [src/multimodal/README.md](../src/multimodal/README.md) 的命令在 4 vCPU 的 CPU 上重新生成：文字特征约 1.5 分钟，CLIP 特征 4–14 分钟，14 次训练约 8 分钟。上传后大小与 SHA-256 应与下表一致。
 
 These files are not in Git. In the `sdascd` storage repository they are under `Meme_Project_updates/Model_ckpt/{text,multimodal}/` (Git LFS). They match the empty `Meme_Project/Model_ckpt/text/` and `Meme_Project/Model_ckpt/multimodal/` folders on the team Drive. Extract each archive **from the repository root**; the archives already contain the destination folders. They contain no dataset images and no encoder weights.
 

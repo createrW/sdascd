@@ -1,0 +1,4 @@
+split,n,class_0,class_1,share_class_1,sarcasm_general,sarcasm_not_sarcastic,sarcasm_twisted_meaning,sarcasm_very_twisted,no_text,tokens_mean,tokens_median,tokens_max,truncated_at_128
+train,5593,1226,4367,0.7808,2797,1226,1262,308,1,22.98,20.0,261,4
+validation,699,161,538,0.7697,367,161,134,37,0,23.04,21.0,96,0
+test,700,157,543,0.7757,343,157,151,49,3,23.2,20.0,135,1

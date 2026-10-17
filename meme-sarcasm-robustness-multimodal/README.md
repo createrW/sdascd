@@ -8,6 +8,7 @@ CSCI 566 梗图讽刺二分类项目：文字模型 DistilBERT；图片模型使
 
 | Goal / 目的 | Open / 查看 |
 |---|---|
+| **Multimodal final results report (statistics, figures, conclusions) / 多模态最终结果报告** | [Team_Review/multimodal/RESULTS_REPORT.md](Team_Review/multimodal/RESULTS_REPORT.md) |
 | Multimodal results, ablations, review / 多模态结果、对照与人工核对 | [Team_Review/multimodal/README.md](Team_Review/multimodal/README.md) |
 | Multimodal pipeline and commands, DistilBERT text features / 多模态流程、命令与 DistilBERT 文字特征 | [src/multimodal/README.md](src/multimodal/README.md) |
 | Multimodal verification / 多模态检测记录 | [docs/Multimodal_Test_Results.md](docs/Multimodal_Test_Results.md) |
@@ -21,15 +22,15 @@ This branch keeps one final image reference run, three small classifier heads, a
 
 本分支保留一套最终图片 reference run、三个小型分类头和当前图片代码。完整 `image-baseline` 分支继续保留历史审计。数据集、特征缓存、下载的编码器和新实验输出不提交到 Git。Google Drive 资料已在本地准备，实际上传后补充下载链接。
 
-The multimodal additions keep two reference runs in Git: `outputs/multimodal/20261016_distilbert_clip_seed42` and its independent reproduction. Text feature caches, multimodal checkpoints, all other runs and step logs are packaged as zips; see [docs/Multimodal_Assets.md](docs/Multimodal_Assets.md).
+The multimodal additions keep two reference runs in Git: `outputs/multimodal/20261016_distilbert_clip_seed42` and its rerun on CPU image features. Text feature caches, multimodal checkpoints, all other runs and step logs are packaged as zips; see [docs/Multimodal_Assets.md](docs/Multimodal_Assets.md).
 
-多模态部分在 Git 中保留两套参考实验：`outputs/multimodal/20261016_distilbert_clip_seed42` 及其独立复现。文字特征缓存、多模态 checkpoint、其余实验和逐步日志打包为 zip，见 [docs/Multimodal_Assets.md](docs/Multimodal_Assets.md)。
+多模态部分在 Git 中保留两套参考实验：`outputs/multimodal/20261016_distilbert_clip_seed42` 及其在 CPU 图片特征上的重跑。文字特征缓存、多模态 checkpoint、其余实验和逐步日志打包为 zip，见 [docs/Multimodal_Assets.md](docs/Multimodal_Assets.md)。
 
 ## Status / 当前状态
 
-Shared dataset validation, the image baseline and the multimodal baseline are complete. The multimodal pipeline (frozen DistilBERT `[CLS]` + frozen CLIP `pooler_output`, L2, concat, MLP 1536-512-2) has text feature caching, training, evaluation, reproduction, an end-to-end check and a manual review, all run on CPU. Validation Macro-F1 is 0.5336 for seed 42 and 0.5364 ± 0.0067 over 3 seeds. The Text Group's DistilBERT classifier is not part of this branch.
+Shared dataset validation, the image baseline and the multimodal baseline are complete. The multimodal pipeline (frozen DistilBERT `[CLS]` + frozen CLIP `pooler_output`, L2, concat, MLP 1536-512-2) has text feature caching, training and evaluation, all run on CPU. It also has a same-agent rerun; the teammate's second-member reproduction is still pending. The end-to-end check passes on CPU caches; the main run's CUDA-cache head misses the 0.01 probability tolerance because of TF32. The manual review is a first pass awaiting a teammate's confirmation. Validation Macro-F1 is 0.5336 for seed 42 and 0.5364 ± 0.0067 over 3 seeds, only just above a label-independent classifier (≈ 0.50); the signal comes from the image features ([results report](Team_Review/multimodal/RESULTS_REPORT.md)). The Text Group's DistilBERT classifier is not part of this branch.
 
-共同数据验证、图片基线和多模态基线已完成。多模态流程（冻结 DistilBERT `[CLS]` + 冻结 CLIP `pooler_output`、L2、拼接、MLP 1536-512-2）包含文字特征缓存、训练、评估、复现、端到端检查和人工核对，全部在 CPU 上运行。Validation Macro-F1：seed 42 为 0.5336，3 个 seed 为 0.5364 ± 0.0067。文字组的 DistilBERT 分类器不在本分支中。
+共同数据验证、图片基线和多模态基线已完成。多模态流程（冻结 DistilBERT `[CLS]` + 冻结 CLIP `pooler_output`、L2、拼接、MLP 1536-512-2）包含文字特征缓存、训练和评估，全部在 CPU 上运行。另有一次同一 agent 的重跑，组员的第二名成员复现仍待完成。端到端检查在 CPU 缓存上通过；主实验基于 CUDA 缓存的分类头因 TF32 未达到 0.01 的概率容差。人工核对是初步结果，需要组员确认。Validation Macro-F1：seed 42 为 0.5336，3 个 seed 为 0.5364 ± 0.0067，仅略高于不看标签的分类器（≈ 0.50），信号来自图像特征（[结果报告](Team_Review/multimodal/RESULTS_REPORT.md)）。文字组的 DistilBERT 分类器不在本分支中。
 
 ## Environment / 环境
 
