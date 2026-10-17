@@ -4,7 +4,9 @@
 |---|---|
 | `Meme_Project-20261016T002724Z-1-001.zip` | Drive export: README (EN/中文), proposal, dataset `MMSoc_Memotion_exported.zip`, image group cloud assets |
 | `meme-sarcasm-robustness-main.zip`, `meme-sarcasm-robustness-image-baseline-clean.zip` | team repository snapshots (`main`, `image-baseline-clean`) |
-| `meme-sarcasm-robustness-multimodal/` | **multimodal stage implemented**: `image-baseline-clean` + DistilBERT text features + multimodal training/evaluation, run on CPU (teammate reproduction pending). Start with **`Team_Review/multimodal/RESULTS_REPORT.md`** (statistics, figures, conclusions) |
+| **`meme-sarcasm-robustness-multimodal-baseline/`** | **current version to submit**: the uploaded `multimodal-baseline` branch merged with the multimodal stage and restructured to the team code convention (`configs/{train,deploy}`, `data/{raw,processed,samples}`, `docs/{design,experiment_log,api_spec}.md`, `notebooks/`, `src/{data,features,models,evaluation,serving}`, `tests/`, `scripts/*.sh`, `setup.py`, `Dockerfile`), with a FastAPI service. Start with its `README.md` |
+| `meme-sarcasm-robustness-multimodal-baseline-patches/` | the same as two `git am` patches for the team repository (`0001` multimodal stage, `0002` restructure + serving) |
+| `meme-sarcasm-robustness-multimodal/` | earlier version (old layout, superseded by the folder above); **multimodal stage implemented**: `image-baseline-clean` + DistilBERT text features + multimodal training/evaluation, run on CPU (teammate reproduction pending). Start with **`Team_Review/multimodal/RESULTS_REPORT.md`** (statistics, figures, conclusions) |
 | `meme-sarcasm-robustness-multimodal.patch` | the same changes as one patch for the team repository: `git apply meme-sarcasm-robustness-multimodal.patch` on `image-baseline-clean` (reference run folders under `outputs/multimodal/` are copied separately from the folder above) |
 | `Meme_Project_updates/Model_ckpt/text/` | `Text_Features_DistilBERT_20261016.zip` → upload to Drive `Meme_Project/Model_ckpt/text/` |
 | `Meme_Project_updates/Model_ckpt/multimodal/` | `Multimodal_Assets_20261016.zip` (fusion checkpoints, CPU CLIP cache with test, all runs, logs) → Drive `Meme_Project/Model_ckpt/multimodal/` |
@@ -16,3 +18,7 @@ The two `Meme_Project_updates` zips are **pending upload**: the CPU session coul
 Validation (seed 42): multimodal Macro-F1 0.5336, accuracy 0.6567; 3 seeds 0.5364 ± 0.0067; majority baseline 0.4349; a label-independent classifier scores ≈ 0.50. The signal comes from the image features: frozen DistilBERT text adds no measurable gain. Test not scored.
 
 Validation（seed 42）：多模态 Macro-F1 0.5336，准确率 0.6567；3 个 seed 0.5364 ± 0.0067；多数类基线 0.4349；不看标签的分类器约 0.50。信号来自图像特征，冻结 DistilBERT 文字没有可测量的增益。Test 未评分。
+
+**2026-10-17 restructure.** Behaviour is unchanged: retraining with the new code and replaying all 17 shipped heads give byte-identical predictions; the results-report statistics regenerate byte-identically; 54 tests pass (one PowerShell test skipped). Serving was checked live over HTTP: 20 validation memes match the recorded probabilities within 9.5e-7. The Docker image was written but not built (no Docker daemon in this session).
+
+**2026-10-17 目录重构。** 行为不变：用新代码重新训练、重放全部 17 个分类头，预测逐字节一致；结果报告统计逐字节一致；54 项测试通过（1 项 PowerShell 测试跳过）。在线接口已实际验证：20 张 validation 梗图的概率与记录一致（差异 ≤ 9.5e-7）。Dockerfile 已编写，但本会话无 Docker，未构建镜像。

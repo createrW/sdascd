@@ -1,0 +1,5 @@
+﻿sample_id,image_path,text_ocr,text_corrected,text_input,sarcasm,sarcasm_binary,humor,offensive,motivational,sentiment,split
+test_000000,images/test_000000.png,"Sunday plans: tea, a book and an early night.","Sunday plans: tea, a book and an early night.","Sunday plans: tea, a book and an early night.",not_sarcastic,0,funny,not_offensive,not_motivational,neutral,test
+test_000001,images/test_000001.png,"Oh great, another Monday. Exactly what I needed.","Oh great, another Monday. Exactly what I needed.","Oh great, another Monday. Exactly what I needed.",general,1,funny,not_offensive,not_motivational,neutral,test
+test_000002,images/test_000002.png,"I love waiting in line for three hours, best day ever.","I love waiting in line for three hours, best day ever.","I love waiting in line for three hours, best day ever.",twisted_meaning,1,funny,not_offensive,not_motivational,neutral,test
+test_000003,images/test_000003.png,,,,not_sarcastic,0,funny,not_offensive,not_motivational,neutral,test

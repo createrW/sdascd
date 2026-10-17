@@ -1,0 +1,29 @@
+# Direct dependencies (loose versions).
+# For the exact environment the image baseline was tested with, use requirements-lock.txt
+# (add the serving lines below to it: fastapi, uvicorn).
+#
+# Install PyTorch for YOUR machine first (https://pytorch.org/get-started/locally/):
+#   NVIDIA GPU (CUDA 12.8):      pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+#   Apple Silicon Mac / CPU-only: pip install torch torchvision
+# then:  pip install -r requirements.txt     (or: pip install -e ".[serving,dev]")
+torch>=2.7
+torchvision>=0.22
+transformers>=5.0
+pandas>=2.2
+numpy
+scikit-learn>=1.5
+scipy>=1.11
+matplotlib>=3.8
+pillow>=10
+tqdm
+pyyaml>=6.0
+
+# serving (src/serving/app.py)
+fastapi>=0.110
+uvicorn>=0.29
+
+# tests (FastAPI TestClient) and notebook kernel; to open the notebooks:
+#   pip install jupyterlab && jupyter lab notebooks/      (they need MEMOTION_DATA_DIR and the caches)
+httpx>=0.27
+nbclient>=0.10
+ipykernel>=6.29

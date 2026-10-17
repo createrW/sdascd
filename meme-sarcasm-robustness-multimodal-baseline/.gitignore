@@ -1,0 +1,107 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# Local editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local secrets and machine-specific settings
+.env
+.env.*
+!.env.example
+
+# Dataset archives and local copies. data/raw (dataset, read-only) and data/processed (feature
+# caches) stay local; only data/README.md and the synthetic data/samples/ are versioned.
+data/*
+!data/README.md
+!data/samples/
+!data/raw/
+data/raw/*
+!data/raw/.gitkeep
+!data/processed/
+data/processed/*
+!data/processed/.gitkeep
+datasets/
+*.zip
+*.tar
+*.tar.gz
+
+# Downloaded models, caches, checkpoints, and extracted features
+/hf_cache/
+/hf_local/
+/features/          # old cache location (repository root only; src/features/ is code)
+*.log
+.ipynb_checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.npy
+
+# Checkpoints stay local by default. The image group's tiny linear-head
+# baseline is intentionally versioned so new members can reproduce evaluation.
+checkpoints/**
+!checkpoints/image/
+!checkpoints/image/20261001_clip_vitb32_seed42/
+!checkpoints/image/20261001_clip_vitb32_seed42/best.pt
+wandb/
+runs/
+
+# Generated experiment artifacts
+outputs/**
+!outputs/.gitkeep
+
+# Curated image handoff: one reference run and three small heads only.
+!checkpoints/image/20261001_clip_vitb32_seed42_zhihan_rtx3080/
+!checkpoints/image/20261001_clip_vitb32_seed42_zhihan_rtx3080/best.pt
+!checkpoints/image/20261006_code_fixes_validation_v2/
+!checkpoints/image/20261006_code_fixes_validation_v2/best.pt
+!outputs/
+outputs/*
+!outputs/.gitkeep
+!outputs/image/
+outputs/image/*
+!outputs/image/20261006_code_fixes_validation_v2/
+outputs/image/20261006_code_fixes_validation_v2/*
+!outputs/image/20261006_code_fixes_validation_v2/README.md
+!outputs/image/20261006_code_fixes_validation_v2/config.json
+!outputs/image/20261006_code_fixes_validation_v2/metrics_validation.json
+!outputs/image/20261006_code_fixes_validation_v2/predictions_validation.csv
+!outputs/image/20261006_code_fixes_validation_v2/training_log.csv
+!outputs/image/20261006_code_fixes_validation_v2/confusion_matrix_validation.png
+external/
+
+# Multimodal reference runs (main + rerun on CPU image features). Other runs, checkpoints, caches
+# and step logs are in Multimodal_Assets_20261016.zip (docs/Multimodal_Assets.md).
+logs/
+# Only the listed files are versioned; new folders written into these runs (e.g. a re-evaluation
+# or error_analysis/ with dataset images) stay local.
+!outputs/multimodal/
+outputs/multimodal/*
+!outputs/multimodal/20261016_distilbert_clip_seed42/
+!outputs/multimodal/20261016_distilbert_clip_seed42_reproduction_cpu/
+outputs/multimodal/20261016_distilbert_clip_seed42*/*
+!outputs/multimodal/20261016_distilbert_clip_seed42*/README.md
+!outputs/multimodal/20261016_distilbert_clip_seed42*/config.json
+!outputs/multimodal/20261016_distilbert_clip_seed42*/metrics_validation.json
+!outputs/multimodal/20261016_distilbert_clip_seed42*/predictions_validation.csv
+!outputs/multimodal/20261016_distilbert_clip_seed42*/training_log.csv
+!outputs/multimodal/20261016_distilbert_clip_seed42*/confusion_matrix_validation.png
+!outputs/multimodal/20261016_distilbert_clip_seed42*/checks/
+outputs/multimodal/20261016_distilbert_clip_seed42*/checks/*
+!outputs/multimodal/20261016_distilbert_clip_seed42*/checks/end_to_end_validation.json
+!outputs/multimodal/20261016_distilbert_clip_seed42/reeval/
+outputs/multimodal/20261016_distilbert_clip_seed42/reeval/*
+!outputs/multimodal/20261016_distilbert_clip_seed42/reeval/*_validation.*
+!outputs/multimodal/20261016_distilbert_clip_seed42/review/
+outputs/multimodal/20261016_distilbert_clip_seed42/review/*
+!outputs/multimodal/20261016_distilbert_clip_seed42/review/manual_review.csv
+!outputs/multimodal/20261016_distilbert_clip_seed42/review/review_grid.png

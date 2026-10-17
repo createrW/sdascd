@@ -1,0 +1,6 @@
+baseline,other,delta_macro_f1_seed42,ci_low_seed42,ci_high_seed42,bootstrap_p_seed42,baseline_only_correct,other_only_correct,mcnemar_exact_p_seed42,delta_macro_f1_seedmean,ci_low_seedmean,ci_high_seedmean,bootstrap_p_seedmean
+mm_cls,image_mlp,-0.023198,-0.063908,0.017549,0.266000,40,88,0.000027,-0.009514,-0.037152,0.017414,0.490400
+mm_cls,text_mlp,0.043352,-0.005192,0.091136,0.073600,132,101,0.049139,0.050178,0.009087,0.091573,0.016600
+mm_cls,mm_mean,0.002544,-0.034729,0.040420,0.902600,47,72,0.027379,0.008417,-0.016126,0.032513,0.490800
+mm_cls,image_group_linear,0.006031,-0.033947,0.045130,0.769200,84,63,0.098701,,,,
+mm_cls,majority,0.098714,0.057949,0.138546,0.000000,50,129,0.000000,,,,

@@ -1,0 +1,128 @@
+"""Validate complete feature caches before training or checkpoint evaluation.
+
+Both caches use one file per split, <dir>/<split>.pt = {"sample_id": list[str],
+"features": FloatTensor[N, D], "labels": LongTensor[N]}, plus <dir>/meta.json with the encoder
+revision, extraction settings, row counts and SHA-256 per split. Loading checks provenance,
+completeness, sample IDs and order against metadata.csv, labels, shape, dtype, NaN/inf and hashes.
+"""
+import hashlib
+import json
+from pathlib import Path
+
+import torch
+
+from src.data.dataset import EXPECTED_SPLIT_SIZES, load_split
+
+PROCESSED_DIR = Path("data/processed")
+TEXT_DIM = 768
+
+
+def file_sha256(path):
+    with Path(path).open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def resolve_features_dir(path) -> Path:
+    """Map between the old 'features/<name>' layout and 'data/processed/features/<name>'.
+
+    Checkpoints and configs recorded before data/processed/ name 'features/<name>'; cache zips
+    unpacked at the repository root (old instructions) create it. Whichever of the two exists is
+    used; an existing or absolute path is returned unchanged.
+    """
+    path = Path(path)
+    if path.exists() or path.is_absolute():
+        return path
+    parts = path.parts
+    if parts[:2] == PROCESSED_DIR.parts:
+        candidate = Path(*parts[2:])          # data/processed/features/x -> features/x
+    else:
+        candidate = PROCESSED_DIR / path      # features/x -> data/processed/features/x
+    return candidate if candidate.exists() else path
+
+
+def load_image_features(features_dir, split, config, data_dir=None):
+    """Return (sample_ids, FloatTensor[N, D], LongTensor[N]) from a CLIP cache after full validation.
+
+    `config` needs clip_model_id, clip_revision and feature (configs/train/image_baseline.yaml).
+    """
+    features_dir = resolve_features_dir(features_dir)
+    meta = json.loads((features_dir / "meta.json").read_text(encoding="utf-8"))
+    if meta.get("limit") is not None:
+        raise ValueError("Smoke/limited caches cannot be used for formal training or evaluation.")
+    for key, expected in (("clip_model_id", config["clip_model_id"]),
+                          ("clip_revision_requested", config["clip_revision"]),
+                          ("feature", config["feature"])):
+        if meta.get(key) != expected:
+            raise ValueError(f"Cache {key}={meta.get(key)!r}; expected {expected!r}")
+    dim = {"pooler_output": 768, "image_embeds": 512}[config["feature"]]
+    count = EXPECTED_SPLIT_SIZES[split]
+    record = meta.get("splits", {}).get(split, {})
+    if record.get("n") != count or record.get("dim") != dim:
+        raise ValueError(f"Incomplete or incompatible {split} cache metadata: {record}")
+    path = features_dir / f"{split}.pt"
+    if record.get("sha256") and file_sha256(path) != record["sha256"]:
+        raise ValueError(f"{split}: feature cache SHA-256 mismatch")
+    cached = torch.load(path, map_location="cpu", weights_only=True)
+    ids, x, y = cached["sample_id"], cached["features"], cached["labels"]
+    if not isinstance(ids, list) or len(ids) != count or any(not isinstance(i, str) for i in ids):
+        raise ValueError(f"{split}: expected {count} string sample IDs")
+    if len(set(ids)) != count:
+        raise ValueError(f"{split}: duplicate sample IDs")
+    if not isinstance(x, torch.Tensor) or x.shape != (count, dim) or x.dtype != torch.float32:
+        raise ValueError(f"{split}: expected float32 features of shape ({count}, {dim})")
+    if not torch.isfinite(x).all():
+        raise ValueError(f"{split}: NaN/inf in features")
+    if not isinstance(y, torch.Tensor) or y.shape != (count,) or y.dtype != torch.int64:
+        raise ValueError(f"{split}: expected int64 labels of shape ({count},)")
+    truth = load_split(split, data_dir)
+    if len(truth) != count or ids != truth["sample_id"].tolist():
+        raise ValueError(f"{split}: sample IDs/order differ from the complete dataset")
+    expected_y = torch.tensor(truth["sarcasm_binary"].to_numpy(), dtype=torch.long)
+    if not torch.equal(y, expected_y):
+        raise ValueError(f"{split}: labels differ from dataset metadata")
+    return ids, x.float(), y
+
+
+load_features = load_image_features  # name used by the image group's original code
+
+
+def load_text_features(features_dir, split, config, data_dir=None):
+    """Return (sample_ids, FloatTensor[N, 768], LongTensor[N]) after checking provenance and alignment.
+
+    `config` needs text_model_id, text_feature and text_max_length (configs/train/multimodal_baseline.yaml).
+    """
+    features_dir = resolve_features_dir(features_dir)
+    meta = json.loads((features_dir / "meta.json").read_text(encoding="utf-8"))
+    if meta.get("limit") is not None:
+        raise ValueError("Smoke/limited caches cannot be used for formal training or evaluation.")
+    for key, expected in (("text_model_id", config["text_model_id"]),
+                          ("text_feature", config["text_feature"]),
+                          ("max_length", config["text_max_length"])):
+        if meta.get(key) != expected:
+            raise ValueError(f"Cache {key}={meta.get(key)!r}; expected {expected!r}")
+    count = EXPECTED_SPLIT_SIZES[split]
+    record = meta.get("splits", {}).get(split, {})
+    if record.get("n") != count or record.get("dim") != TEXT_DIM:
+        raise ValueError(f"Incomplete or incompatible {split} cache metadata: {record}")
+    path = features_dir / f"{split}.pt"
+    if record.get("sha256") and file_sha256(path) != record["sha256"]:
+        raise ValueError(f"{split}: feature cache SHA-256 mismatch")
+    cached = torch.load(path, map_location="cpu", weights_only=True)
+    ids, x, y = cached["sample_id"], cached["features"], cached["labels"]
+    if not isinstance(ids, list) or len(ids) != count or any(not isinstance(i, str) for i in ids):
+        raise ValueError(f"{split}: expected {count} string sample IDs")
+    if len(set(ids)) != count:
+        raise ValueError(f"{split}: duplicate sample IDs")
+    if not isinstance(x, torch.Tensor) or x.shape != (count, TEXT_DIM) or x.dtype != torch.float32:
+        raise ValueError(f"{split}: expected float32 features of shape ({count}, {TEXT_DIM})")
+    if not torch.isfinite(x).all():
+        raise ValueError(f"{split}: NaN/inf in features")
+    if not isinstance(y, torch.Tensor) or y.shape != (count,) or y.dtype != torch.int64:
+        raise ValueError(f"{split}: expected int64 labels of shape ({count},)")
+    truth = load_split(split, data_dir)
+    if len(truth) != count or ids != truth["sample_id"].tolist():
+        raise ValueError(f"{split}: sample IDs/order differ from the complete dataset")
+    expected_y = torch.tensor(truth["sarcasm_binary"].to_numpy(), dtype=torch.long)
+    if not torch.equal(y, expected_y):
+        raise ValueError(f"{split}: labels differ from dataset metadata")
+    return ids, x.float(), y

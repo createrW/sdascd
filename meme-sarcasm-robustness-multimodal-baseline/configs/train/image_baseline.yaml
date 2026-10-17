@@ -1,0 +1,26 @@
+# Image-only baseline (image group): frozen CLIP ViT-B/32 pooler_output -> linear head.
+#   python -m src.models.trainer --config configs/train/image_baseline.yaml
+# hidden_dim 0 = linear probe; hidden_dim > 0 = one-hidden-layer MLP (docs/image_baseline.md).
+task: image
+model_name: clip_vitb32_frozen
+
+clip_model_id: openai/clip-vit-base-patch32
+clip_revision: 3d74acf
+feature: pooler_output
+
+features:
+  # written by `python -m src.features.feature_engineering image` (full train/validation run)
+  image: data/processed/features/clip_vitb32_pooler
+
+head:
+  hidden_dim: 0
+  dropout: 0.0
+
+seed: 42
+threshold: 0.5          # fixed (README 3.2); never tuned
+loss: weighted_cross_entropy   # class weights from TRAIN only (README 5.2)
+optimizer: adamw
+lr: 0.001
+weight_decay: 0.0001
+batch_size: 64
+epochs: 30              # best epoch kept by validation Macro-F1

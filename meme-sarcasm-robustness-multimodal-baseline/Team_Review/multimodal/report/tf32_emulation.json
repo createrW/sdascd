@@ -1,0 +1,140 @@
+{
+  "clip_source": "/home/user/models/hf_local/clip-vit-base-patch32",
+  "groups": {
+    "validation_worst10": {
+      "n": 10,
+      "sample_ids": [
+        "validation_000550",
+        "validation_000149",
+        "validation_000624",
+        "validation_000512",
+        "validation_000164",
+        "validation_000018",
+        "validation_000540",
+        "validation_000675",
+        "validation_000358",
+        "validation_000660"
+      ],
+      "float32": {
+        "mean_abs_diff": 0.028078339993953705,
+        "max_abs_diff": 1.432081699371338,
+        "min_cosine": 0.985371161628364,
+        "mean_cosine": 0.9980715595884229
+      },
+      "tf32_conv": {
+        "mean_abs_diff": 0.00010915878374362364,
+        "max_abs_diff": 0.003037765622138977,
+        "min_cosine": 0.9999999484430729,
+        "mean_cosine": 0.9999999796197969
+      }
+    },
+    "validation_first64": {
+      "n": 64,
+      "sample_ids": [
+        "validation_000000",
+        "validation_000001",
+        "validation_000002",
+        "validation_000003",
+        "validation_000004",
+        "validation_000005",
+        "validation_000006",
+        "validation_000007",
+        "validation_000008",
+        "validation_000009",
+        "validation_000010",
+        "validation_000011",
+        "validation_000012",
+        "validation_000013",
+        "validation_000014",
+        "validation_000015",
+        "validation_000016",
+        "validation_000017",
+        "validation_000018",
+        "validation_000019",
+        "validation_000020",
+        "validation_000021",
+        "validation_000022",
+        "validation_000023",
+        "validation_000024",
+        "validation_000025",
+        "validation_000026",
+        "validation_000027",
+        "validation_000028",
+        "validation_000029",
+        "validation_000030",
+        "validation_000031",
+        "validation_000032",
+        "validation_000033",
+        "validation_000034",
+        "validation_000035",
+        "validation_000036",
+        "validation_000037",
+        "validation_000038",
+        "validation_000039",
+        "validation_000040",
+        "validation_000041",
+        "validation_000042",
+        "validation_000043",
+        "validation_000044",
+        "validation_000045",
+        "validation_000046",
+        "validation_000047",
+        "validation_000048",
+        "validation_000049",
+        "validation_000050",
+        "validation_000051",
+        "validation_000052",
+        "validation_000053",
+        "validation_000054",
+        "validation_000055",
+        "validation_000056",
+        "validation_000057",
+        "validation_000058",
+        "validation_000059",
+        "validation_000060",
+        "validation_000061",
+        "validation_000062",
+        "validation_000063"
+      ],
+      "float32": {
+        "mean_abs_diff": 0.0017092116177082062,
+        "max_abs_diff": 0.16651564836502075,
+        "min_cosine": 0.999768454150272,
+        "mean_cosine": 0.9999893917744845
+      },
+      "tf32_conv": {
+        "mean_abs_diff": 2.8974978704354726e-05,
+        "max_abs_diff": 0.0026710033416748047,
+        "min_cosine": 0.999999922530147,
+        "mean_cosine": 0.9999999968578337
+      }
+    },
+    "train_worst10": {
+      "n": 10,
+      "sample_ids": [
+        "train_004233",
+        "train_003890",
+        "train_000006",
+        "train_005493",
+        "train_003311",
+        "train_003877",
+        "train_000129",
+        "train_001316",
+        "train_003745",
+        "train_005510"
+      ],
+      "float32": {
+        "mean_abs_diff": 0.07238022983074188,
+        "max_abs_diff": 1.37646484375,
+        "min_cosine": 0.981468796658352,
+        "mean_cosine": 0.9931604957017113
+      },
+      "tf32_conv": {
+        "mean_abs_diff": 5.795056858914904e-05,
+        "max_abs_diff": 0.001152634620666504,
+        "min_cosine": 0.9999999758489877,
+        "mean_cosine": 0.9999999950156049
+      }
+    }
+  }
+}

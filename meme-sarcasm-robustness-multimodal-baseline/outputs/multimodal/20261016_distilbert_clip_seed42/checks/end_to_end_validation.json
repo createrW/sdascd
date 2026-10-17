@@ -1,0 +1,16 @@
+{
+  "run_id": "20261016_distilbert_clip_seed42",
+  "n": 64,
+  "device": "cpu",
+  "text_features_dir": "features/distilbert_first_token",
+  "image_features_dir": "features/20261006_code_fixes_validation_v2",
+  "text_model": "/home/user/models/hf_local/distilbert-base-uncased",
+  "clip_model": "/home/user/models/hf_local/clip-vit-base-patch32",
+  "text_max_abs_diff": 2.384185791015625e-07,
+  "text_min_cosine": 0.9999998211860657,
+  "image_max_abs_diff": 0.05450316146016121,
+  "image_min_cosine": 0.9853712320327759,
+  "probability_max_abs_diff": 0.013139307498931885,
+  "label_agreement": 1.0,
+  "passed": false
+}

@@ -1,0 +1,4 @@
+# Keep curated evidence bytes stable on Windows and other platforms.
+Team_Review/image/manual_review/*.csv -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+Team_Review/image/images/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+outputs/image/20261006_code_fixes_validation_v2/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

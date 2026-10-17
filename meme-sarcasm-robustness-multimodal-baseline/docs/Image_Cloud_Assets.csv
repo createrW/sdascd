@@ -1,0 +1,4 @@
+filename,size_bytes,size_mib,sha256,download_url,status,extract_from,creates_directory,purpose
+Image_Baseline_Full_Audit_51c6dbd.zip,16408026,15.648,865b0d724fad6b31790af22322deea2be3cc36d423815282257fda703d827823,,Prepared locally; upload pending,Repository root,external/image_audit/image-baseline-51c6dbd/,Complete historical audit and duplicated evidence
+Image_Features_CLIP_ViTB32_20261006.zip,17939572,17.109,7a02d46bab9e7bd4d15b5ebb6884d2805d94cb5e03c0170c75a056e0588e5662,,Prepared locally; upload pending,data/processed (from the repository root),data/processed/features/20261006_code_fixes_validation_v2/,Complete train/validation CLIP pooler_output cache
+Image_Baseline_Clean_Verification_20261009.zip,557951,0.532,4a1a93ff2d2c37b2819637f8f99c2f862d2d55400bf0eacd83e22aebeb20ec63,,Prepared locally; upload pending,Repository root,external/image_validation/20261009/,Fresh clean-branch test logs and reproduction evidence

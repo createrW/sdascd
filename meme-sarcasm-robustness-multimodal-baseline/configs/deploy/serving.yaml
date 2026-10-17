@@ -1,0 +1,25 @@
+# Inference / serving configuration (src/serving/app.py, src/serving/predictor.py).
+#   bash scripts/serve.sh                                   # uvicorn on host:port below
+#   CHECKPOINT=checkpoints/multimodal/<run_id>/best.pt bash scripts/serve.sh   # serve your own head
+#   SERVING_CONFIG=other.yaml bash scripts/serve.sh
+# The checkpoint carries its own training config (encoders, revisions, text_max_length, threshold).
+
+# Reference head (validation-selected multimodal baseline). Not in Git: it comes from
+# Multimodal_Assets_20261016.zip (docs/Multimodal_Assets.md), or train it yourself.
+checkpoint: checkpoints/multimodal/20261016_distilbert_clip_seed42/best.pt
+
+# Local copies of the pinned encoder weights (offline machines). null = download
+# distilbert/distilbert-base-uncased@1c4513b and openai/clip-vit-base-patch32@3d74acf from the Hub.
+text_model_dir: null
+clip_model_dir: null
+
+device: cpu              # cpu | cuda | mps; null = the first available
+host: 0.0.0.0
+port: 8000
+
+# Request limits (HTTP 413 above them; see docs/api_spec.md)
+max_batch_size: 32       # items per POST /predict/batch
+max_image_bytes: 10485760   # image file size after base64 decoding (10 MiB)
+max_image_pixels: 40000000  # width x height (largest dataset image: 25 MP)
+max_aspect_ratio: 20        # longer / shorter side (dataset maximum: 4.35)
+max_text_chars: 2000     # longer captions are rejected (the model reads 128 tokens anyway)

@@ -1,0 +1,18 @@
+# Keep the build context to code and configs (no data, caches, checkpoints or run outputs).
+.git
+.venv
+**/__pycache__
+data/raw
+data/processed
+features
+checkpoints
+outputs
+logs
+hf_cache
+hf_local
+external
+notebooks
+Team_Review
+*.zip
+*.pt
+*.log
