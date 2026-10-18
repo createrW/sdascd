@@ -43,10 +43,12 @@ pip install -r requirements.txt               # optional: pip install -e ".[serv
 export MEMOTION_DATA_DIR=/path/to/MMSoc_Memotion_exported
 python -m scripts.verify_dataset              # -> DATASET OK
 
-# 3. features -> data/processed/features/ (or unzip the shared caches into data/processed/, see data/README.md)
+# 3. features -> data/processed/features/. Fast route: `unzip -n Feature_Caches_merged_20261018_v2.zip` at the
+#    repository root gives all five caches, and `unzip -n Checkpoints_merged_20261018_v2.zip` the trained
+#    heads (docs/Multimodal_Assets.md, docs/checkpoints.md). Or extract them yourself:
 bash scripts/extract_features.sh text         # DistilBERT [CLS] + mean pooling, ~1.5 min on CPU
-#    image: unzip the image group's cache (the multimodal configs' default, data/processed/features/20261006_code_fixes_validation_v2)
-#    or extract your own (~4 min on 4 CPU cores):
+#    image: the multimodal configs default to the image group's CUDA cache (data/processed/features/20261006_code_fixes_validation_v2,
+#    from the cache archives); or extract a CPU cache yourself (~4 min on 4 cores):
 bash scripts/extract_features.sh image --splits train validation test --out_dir data/processed/features/clip_vitb32_pooler_cpu
 
 # 4. train and evaluate (feature folders default to the config's `features:` block)
@@ -57,7 +59,7 @@ bash scripts/train.sh configs/train/image_baseline.yaml --run_id my_image_run \
 bash scripts/eval.sh my_multimodal_run        # reload; compares with the reported metrics
 
 # 5. serve (FastAPI; docs/api_spec.md). The default head (configs/deploy/serving.yaml) comes from
-#    Multimodal_Assets_20261016.zip (docs/Multimodal_Assets.md); or serve the run you just trained:
+#    Checkpoints_merged_20261018_v2.zip (docs/checkpoints.md); or serve the run you just trained:
 CHECKPOINT=checkpoints/multimodal/my_multimodal_run/best.pt bash scripts/serve.sh
 curl -s -X POST localhost:8000/predict -H 'Content-Type: application/json' -d @data/samples/predict_request.json
 
@@ -78,18 +80,19 @@ Windows 上直接运行 `.sh` 脚本中对应的 `python -m ...` 命令，并用
 configs/
   train/            image_baseline.yaml, multimodal_baseline.yaml, multimodal_{text_only,image_only,mean_pooling}.yaml
   deploy/           serving.yaml                      inference / API settings
-data/               (git-ignored except README.md and samples/)  see data/README.md
+data/               (git-ignored except README.md, samples/ and .gitkeep files)  see data/README.md
   raw/              the exported dataset, read-only
   processed/        feature caches: features/<name>/{train,validation,test}.pt + meta.json
   samples/          synthetic 4-row splits + API request bodies (committed)
-docs/               design.md, experiment_log.md, api_spec.md, decisions.md, image/multimodal guides
+docs/               design.md, experiment_log.md, api_spec.md, decisions.md, checkpoints.md (+ manifest, SHA-256),
+                    Multimodal_Assets.md (asset archives), image/multimodal guides
 notebooks/          eda.ipynb (data exploration), poc_model.ipynb (model PoC on cached features)
 src/
   data/             dataset.py (contract, labels), preprocess.py ([NO_TEXT], RGB, tokenize), loader.py (joint cache loader)
   features/         feature_engineering.py (CLIP / DistilBERT extraction), cache.py (cache validation)
   models/           base_model.py, vit_classifier.py (image head), multimodal_classifier.py, trainer.py
   evaluation/       metrics.py, report.py, evaluate.py, reproduction.py, end_to_end.py,
-                    error_analysis.py, review_samples.py, results_report.py
+                    error_analysis.py, review_samples.py, results_report.py, overfitting_diagnostic.py
   serving/          predictor.py (inference wrapper + smoke test), app.py (FastAPI)
   utils/            config.py (YAML/JSON), reproducibility.py (seeds, device), safety.py (no overwrites)
 tests/              test_data_loader.py, test_model.py, test_serving.py (+ helpers.py)
@@ -97,7 +100,7 @@ scripts/            train.sh, eval.sh, serve.sh, extract_features.sh, reproduce_
 outputs/            run folders (curated reference runs only in Git)
 checkpoints/        trained heads (only the image group's three small heads in Git)
 Team_Review/        curated results, manual reviews, the multimodal results report
-requirements.txt, requirements-lock.txt, setup.py, Dockerfile, .dockerignore, .gitignore
+requirements.txt, requirements-lock.txt, setup.py, Dockerfile, .dockerignore, .gitignore, .gitattributes
 ```
 
 ## Documents / 文档
@@ -113,6 +116,7 @@ requirements.txt, requirements-lock.txt, setup.py, Dockerfile, .dockerignore, .g
 | Multimodal pipeline, commands, DistilBERT text features / 多模态流程与命令 | [docs/multimodal_baseline.md](docs/multimodal_baseline.md) |
 | Multimodal results, ablations, review / 多模态结果与人工核对 | [Team_Review/multimodal/README.md](Team_Review/multimodal/README.md) |
 | Multimodal verification and assets / 多模态检测记录与资料 | [docs/Multimodal_Test_Results.md](docs/Multimodal_Test_Results.md), [docs/Multimodal_Assets.md](docs/Multimodal_Assets.md) |
+| Checkpoints: which one, format, full list / Checkpoint 说明 | [docs/checkpoints.md](docs/checkpoints.md) (+ [manifest](docs/checkpoints_manifest.csv), [SHA-256](docs/checkpoints_SHA256SUMS.txt)) |
 | Image baseline, results and 32 reviewed samples / 图片基线与人工检查 | [docs/image_baseline.md](docs/image_baseline.md), [Team_Review/image/README.md](Team_Review/image/README.md) |
 | Cached or complete image reproduction / 图片复现 | [docs/Image_Reproduction.md](docs/Image_Reproduction.md), [docs/Image_Test_Results.md](docs/Image_Test_Results.md), [docs/Image_Cloud_Assets.md](docs/Image_Cloud_Assets.md) |
 | Data folders and cache archives / 数据目录与缓存包 | [data/README.md](data/README.md) |
@@ -140,13 +144,13 @@ The code moved from `src/{common,image,text,multimodal}/` to the layout above on
 
 ## Status / 当前状态
 
-Shared dataset validation, the image baseline and the multimodal baseline are complete. The multimodal pipeline has text feature caching, training and evaluation, all run on CPU, plus a same-agent rerun; the teammate's second-member reproduction is still pending. The end-to-end check passes on CPU caches; the main run's CUDA-cache head misses the 0.01 probability tolerance because of TF32 (D19). The manual review is a first pass awaiting a teammate's confirmation. The Text Group's fine-tuned DistilBERT classifier is not part of this branch.
+Shared dataset validation, the image baseline and the multimodal baseline are complete. The multimodal pipeline has text feature caching, training and evaluation, all run on CPU, plus a same-agent rerun; the teammate's second-member reproduction is still pending. The end-to-end check passes on CPU caches; the main run's CUDA-cache head misses the 0.01 probability tolerance because of TF32 (D19). The manual review is a first pass awaiting a teammate's confirmation. The Text Group's fine-tuned DistilBERT classifier is not part of this repository.
 
-共同数据验证、图片基线和多模态基线已完成。多模态流程的文字特征缓存、训练和评估都在 CPU 上完成，另有一次同一 agent 的重跑；组员的第二名成员复现仍待完成。端到端检查在 CPU 缓存上通过；主实验基于 CUDA 缓存的分类头因 TF32 未达到 0.01 的概率容差（D19）。人工核对是初步结果，需要组员确认。文字组微调的 DistilBERT 分类器不在本分支中。
+共同数据验证、图片基线和多模态基线已完成。多模态流程的文字特征缓存、训练和评估都在 CPU 上完成，另有一次同一 agent 的重跑；组员的第二名成员复现仍待完成。端到端检查在 CPU 缓存上通过；主实验基于 CUDA 缓存的分类头因 TF32 未达到 0.01 的概率容差（D19）。人工核对是初步结果，需要组员确认。文字组微调的 DistilBERT 分类器不在本仓库中。
 
-This branch keeps one final image reference run, three small image heads and two multimodal reference runs (`outputs/multimodal/20261016_distilbert_clip_seed42` and its rerun on CPU image features). Datasets, feature tensors, downloaded encoders, other checkpoints and new outputs stay outside Git; the text caches, multimodal checkpoints and remaining runs are packaged as zips ([docs/Multimodal_Assets.md](docs/Multimodal_Assets.md), upload pending).
+This repository keeps one final image reference run, three small image heads and two multimodal reference runs (`outputs/multimodal/20261016_distilbert_clip_seed42` and its rerun on CPU image features). Datasets, feature tensors, downloaded encoders, other checkpoints and new outputs stay outside Git; the caches, checkpoints and remaining runs are packaged as four zips ([docs/Multimodal_Assets.md](docs/Multimodal_Assets.md); every checkpoint is described in [docs/checkpoints.md](docs/checkpoints.md)).
 
-本分支保留一套最终图片 reference run、三个小型图片分类头和两套多模态参考实验。数据集、特征、下载的编码器、其他 checkpoint 和新输出不提交到 Git；文字特征、多模态 checkpoint 和其余实验已打包（见 Multimodal_Assets.md，待上传）。
+本仓库保留一套最终图片 reference run、三个小型图片分类头和两套多模态参考实验。数据集、特征、下载的编码器、其他 checkpoint 和新输出不提交到 Git；特征缓存、checkpoint 和其余实验打包为四个压缩包（见 Multimodal_Assets.md；每个 checkpoint 的说明见 docs/checkpoints.md）。
 
 ## Environment / 环境
 
@@ -168,7 +172,10 @@ For the tested PyTorch wheel an up-to-date NVIDIA driver is enough; no separate 
 * Never commit the dataset or its zip, feature caches, encoder weights, Hugging Face caches or model checkpoints (team README 9.4, `.gitignore`). Deliberate exceptions, kept by the groups for review and reproduction:
   * dataset-derived review evidence: `Team_Review/image/images/*_review.png` (grids of 32 image-group samples), `Team_Review/image/manual_review/*.csv` (their sample IDs, labels and caption excerpts) and `outputs/multimodal/20261016_distilbert_clip_seed42/review/` (16 validation memes with captions); every `predictions_*.csv` also lists the dataset label of each `sample_id`;
   * the image group's three 8.6 KB linear heads in `checkpoints/image/`.
-  Remove the review evidence before making the repository public. New outputs, including `error_analysis/` and re-evaluation folders inside the reference runs, stay git-ignored.
+  Create the GitHub repository as **private**, or remove the review evidence before making it public. New outputs, including `error_analysis/` and re-evaluation folders inside the reference runs, stay git-ignored.
+* "team README x.y" (in docs, configs and code comments also "README x.y") cites a numbered section of the course team's
+  project specification, which is not part of this repository; the decisions taken from it are recorded in
+  [docs/decisions.md](docs/decisions.md).
 * Validation selects epochs and compares models; Test is scored once, at the end (`--split test`).
 * Existing run, checkpoint and cache folders are never overwritten: choose a new `--run_id` / output folder.
 * Record every formal run in [docs/experiment_log.md](docs/experiment_log.md) and team-wide choices in [docs/decisions.md](docs/decisions.md).

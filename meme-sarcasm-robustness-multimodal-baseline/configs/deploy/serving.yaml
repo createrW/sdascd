@@ -5,7 +5,7 @@
 # The checkpoint carries its own training config (encoders, revisions, text_max_length, threshold).
 
 # Reference head (validation-selected multimodal baseline). Not in Git: it comes from
-# Multimodal_Assets_20261016.zip (docs/Multimodal_Assets.md), or train it yourself.
+# Checkpoints_merged_20261018_v2.zip (docs/checkpoints.md), or train it yourself.
 checkpoint: checkpoints/multimodal/20261016_distilbert_clip_seed42/best.pt
 
 # Local copies of the pinned encoder weights (offline machines). null = download

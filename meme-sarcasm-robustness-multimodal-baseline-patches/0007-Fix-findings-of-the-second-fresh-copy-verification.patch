@@ -1,0 +1,319 @@
+From f981f4ca1f2e339f408a8b7c6d65400528df0f07 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 18 Oct 2026 04:01:30 +0000
+Subject: [PATCH 7/8] Fix findings of the second fresh-copy verification
+
+- multimodal_baseline.md step 5 writes the re-extraction to a new prefix, because the cache
+  archive now ships reproduction_distilbert_first_token under the recorded name.
+- summarize_multimodal_runs: document --pattern '20261016_*' to reproduce the committed
+  table (the default also lists the 42 sweep runs).
+- checkpoints.md: the two 20261001 image heads need --features_dir as well as
+  --reference_metrics; the train/validation ROC-AUC caveat names the heads its ranges
+  come from.
+- Known problems: validation loss is lowest at epoch 1 in the 2026-10-16 runs (within the
+  first 5 epochs in the sweep).
+- Multimodal_Assets.md: the run-output archive omits the whole review/ folder; the
+  summary script counts folders with metrics_validation.json.
+- /model shows local encoder copies as local_dir:<folder> (api_spec.md updated).
+- .dockerignore excludes data, checkpoints, outputs, logs, caches and weight/archive
+  formats at any depth (src/features/ stays in the context).
+- Image docs: PowerShell route A starts from the merged cache archive; remaining
+  references to the image group's branches name the original team repository.
+- Multimodal_Test_Results.md: 2026-10-18 record of the fresh-copy verification.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_012mxouBDiknGrGqchsM6QFE
+---
+ .dockerignore                        | 16 ++++++++++++++++
+ Team_Review/multimodal/README.md     |  4 ++--
+ docs/Image_Cloud_Assets.md           |  4 ++--
+ docs/Image_Reproduction.md           |  6 ++++--
+ docs/Multimodal_Assets.md            | 11 ++++++-----
+ docs/Multimodal_Test_Results.md      | 25 +++++++++++++++++++++++--
+ docs/api_spec.md                     |  2 +-
+ docs/checkpoints.md                  |  6 +++---
+ docs/multimodal_baseline.md          |  7 ++++---
+ scripts/summarize_multimodal_runs.py |  3 ++-
+ scripts/train.sh                     |  2 +-
+ src/serving/predictor.py             |  7 +++++--
+ 12 files changed, 69 insertions(+), 24 deletions(-)
+
+diff --git a/.dockerignore b/.dockerignore
+index 911ba1c..0791495 100644
+--- a/.dockerignore
++++ b/.dockerignore
+@@ -20,3 +20,19 @@ runs
+ **/*.zip
+ **/*.pt
+ **/*.log
++# the same at any depth (but not **/features: that would drop the src/features/ code)
++**/checkpoints
++**/outputs
++**/logs
++**/data/raw
++**/data/processed
++**/datasets
++**/hf_local
++**/hf_cache
++**/*.tar
++**/*.tar.gz
++**/*.7z
++**/*.pth
++**/*.ckpt
++**/*.safetensors
++**/*.npy
+diff --git a/Team_Review/multimodal/README.md b/Team_Review/multimodal/README.md
+index 0381ad8..a6f2544 100644
+--- a/Team_Review/multimodal/README.md
++++ b/Team_Review/multimodal/README.md
+@@ -90,12 +90,12 @@ This answers the proposal's question for the frozen baseline: its "multimodal" s
+ - The encoders here were local copies of the pinned weights, because Hugging Face was blocked. On a machine with Hub access, re-running `python -m src.features.feature_engineering text` and comparing with `scripts/compare_feature_caches.py` will confirm the DistilBERT copy (expected max diff ≈ 0).
+ - Test is not scored. For the final evaluation use `data/processed/features/clip_vitb32_pooler_cpu`, because the image group cache has no test split.
+ - The image group's CUDA cache uses TF32 (see the test report). The 0.01 Macro-F1 tolerance absorbs it, but probability-level checks against that cache are looser than float precision.
+-- Validation is small and noisy. Report the 3-seed mean plus paired bootstrap and label-permutation tests for comparisons. Validation loss is lowest at epoch 1 in every image-based run, so it cannot be used for early stopping. A lower learning rate, dropout 0.5 and weight decay 1e-2 were tested in the overfitting sweep (point 5); a fixed epoch budget or a smoothed Macro-F1 criterion, and text-specific regularization, are post-Oct 14 work (a team decision if it replaces D10).
++- Validation is small and noisy. Report the 3-seed mean plus paired bootstrap and label-permutation tests for comparisons. Validation loss is lowest at epoch 1 in every 2026-10-16 image-based run (within the first 5 epochs in the overfitting sweep), so it cannot be used for early stopping. A lower learning rate, dropout 0.5 and weight decay 1e-2 were tested in the overfitting sweep (point 5); a fixed epoch budget or a smoothed Macro-F1 criterion, and text-specific regularization, are post-Oct 14 work (a team decision if it replaces D10).
+ - Checkpoints and caches are not in Git. They are in `Checkpoints_merged_20261018_v2.zip`, `Feature_Caches_merged_20261018_v2.zip` and `Run_Outputs_20261018_v2.zip` ([asset list](../../docs/Multimodal_Assets.md), [checkpoint guide](../../docs/checkpoints.md)).
+ 
+ - 组员仍需完成人工的"第二名成员复现"；本次重跑由同一 agent 使用重新提取（逐位相同）的文字特征和 CPU 图片特征完成。
+ - 由于无法访问 Hugging Face，本次编码器使用固定权重的本地副本；在能访问 Hub 的机器上重新运行 `python -m src.features.feature_engineering text` 并用 `scripts/compare_feature_caches.py` 比较，即可确认 DistilBERT 副本（预期最大差异 ≈ 0）。
+ - Test 未评分；最终评估需使用 `data/processed/features/clip_vitb32_pooler_cpu`，因为图片组缓存不含 test。
+ - 图片组 CUDA 缓存使用了 TF32（见检测报告）；0.01 的 Macro-F1 容差可以吸收，但针对该缓存的概率级检查达不到浮点精度。
+-- Validation 规模小、噪声大，比较时请用 3 个 seed 的均值，并配合配对 bootstrap 与标签置换检验。所有使用图像的实验中 validation loss 都在第 1 个 epoch 最低，不能用来早停。更低的学习率、dropout 0.5 与 weight decay 1e-2 已在过拟合扫描中测试（第 5 点）；改用固定 epoch 数或平滑后的 Macro-F1 准则，以及针对文字分支的正则化，属于10月14日之后的工作（若替代 D10，需团队决定）。
++- Validation 规模小、噪声大，比较时请用 3 个 seed 的均值，并配合配对 bootstrap 与标签置换检验。2026-10-16 所有使用图像的实验中 validation loss 都在第 1 个 epoch 最低（过拟合扫描中都在前 5 个 epoch 内），不能用来早停。更低的学习率、dropout 0.5 与 weight decay 1e-2 已在过拟合扫描中测试（第 5 点）；改用固定 epoch 数或平滑后的 Macro-F1 准则，以及针对文字分支的正则化，属于10月14日之后的工作（若替代 D10，需团队决定）。
+ - Checkpoint 和缓存不在 Git 中，见 `Checkpoints_merged_20261018_v2.zip`、`Feature_Caches_merged_20261018_v2.zip` 和 `Run_Outputs_20261018_v2.zip`（[资料清单](../../docs/Multimodal_Assets.md)、[checkpoint 说明](../../docs/checkpoints.md)）。
+diff --git a/docs/Image_Cloud_Assets.md b/docs/Image_Cloud_Assets.md
+index 2faafc8..16f1aa0 100644
+--- a/docs/Image_Cloud_Assets.md
++++ b/docs/Image_Cloud_Assets.md
+@@ -26,9 +26,9 @@ The audit archive is an exact file-tree snapshot of the preserved `image-baselin
+ 
+ 完整审计包是原团队仓库保留分支 `image-baseline` 的 `51c6dbd` 文件树快照，包含早期实验、完整日志、Excel 表格、重复图集与代码快照。其 Git 历史保留在原仓库中，不在本仓库中。审计包内容是历史证据，运行程序请使用当前复现说明。
+ 
+-The feature archive contains complete Train/Validation tensors (768-dimensional `pooler_output`, sample IDs and labels) plus metadata. It is used only for the fast reproduction route. The verification archive contains the fresh checks performed on the image group's clean branch. None of these ZIP files or feature tensors is tracked in this repository.
++The feature archive contains complete Train/Validation tensors (768-dimensional `pooler_output`, sample IDs and labels) plus metadata. It is used only for the fast reproduction route. The verification archive contains the fresh checks performed on the image group's clean branch (original team repository). None of these ZIP files or feature tensors is tracked in this repository.
+ 
+-特征包包含完整 Train/Validation 张量（768 维 `pooler_output`、sample ID、标签）及元数据，用于快速复现。检测包包含图片组精简分支实际验证的证据。本仓库不跟踪这些 ZIP 或特征张量。
++特征包包含完整 Train/Validation 张量（768 维 `pooler_output`、sample ID、标签）及元数据，用于快速复现。检测包包含图片组精简分支（原团队仓库）实际验证的证据。本仓库不跟踪这些 ZIP 或特征张量。
+ 
+ Before extraction, compare `Get-FileHash <archive-path> -Algorithm SHA256` with this list. Then, from the repository root and without `-Force`, run `Expand-Archive -LiteralPath <archive-path> -DestinationPath data/processed` for the feature archive and `-DestinationPath .` for the two others. (A feature archive expanded at the root, into `features/`, is still found.)
+ 
+diff --git a/docs/Image_Reproduction.md b/docs/Image_Reproduction.md
+index 842c348..a477808 100644
+--- a/docs/Image_Reproduction.md
++++ b/docs/Image_Reproduction.md
+@@ -23,8 +23,10 @@ Get the cache from `Feature_Caches_merged_20261018_v2.zip` ([Multimodal_Assets.m
+ 从 `Feature_Caches_merged_20261018_v2.zip` 获取缓存（见 [Multimodal_Assets.md](Multimodal_Assets.md)，在仓库根目录 `unzip -n`）；或待[云端清单](Image_Cloud_Assets.md)提供链接后下载 `Image_Features_CLIP_ViTB32_20261006.zip`，核对大小和 SHA-256，解压到 `data/processed/`。将生成 `data/processed/features/20261006_code_fixes_validation_v2/`，包含 `train.pt`、`validation.pt`、`meta.json`。缓存包含 768 维特征、sample ID 和标签，使用前会检查元数据及样本一致性。仍需原始三个划分的元数据；此方式不读取数据集图片、不下载编码器、不重新提取特征。
+ 
+ ```powershell
+-Get-FileHash 'D:\Downloads\Image_Features_CLIP_ViTB32_20261006.zip' -Algorithm SHA256
+-Expand-Archive -LiteralPath 'D:\Downloads\Image_Features_CLIP_ViTB32_20261006.zip' -DestinationPath data/processed
++Get-FileHash 'D:\Downloads\Feature_Caches_merged_20261018_v2.zip' -Algorithm SHA256   # compare with docs/Multimodal_Assets.md
++Expand-Archive -LiteralPath 'D:\Downloads\Feature_Caches_merged_20261018_v2.zip' -DestinationPath .   # creates data/processed/features/...
++# alternative, once the image archive is uploaded:
++# Expand-Archive -LiteralPath 'D:\Downloads\Image_Features_CLIP_ViTB32_20261006.zip' -DestinationPath data/processed
+ python -m src.evaluation.evaluate --run_id 20261006_code_fixes_validation_v2 --features_dir data/processed/features/20261006_code_fixes_validation_v2 --out_dir outputs/image/quick_checkpoint_check
+ python -m scripts.verify_predictions outputs/image/quick_checkpoint_check/predictions_validation.csv
+ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/reproduce_image.ps1 -RunId my_cached_reproduction_01 -FeaturesDir data/processed/features/20261006_code_fixes_validation_v2
+diff --git a/docs/Multimodal_Assets.md b/docs/Multimodal_Assets.md
+index 4dee9e8..f83fb50 100644
+--- a/docs/Multimodal_Assets.md
++++ b/docs/Multimodal_Assets.md
+@@ -11,9 +11,10 @@ SHA-256 与下表一致即可使用。
+ 
+ The archives contain no encoder weights and no dataset image files. `Run_Outputs_20261018_v2.zip` has
+ per-sample predictions (`sample_id`, dataset label, predicted probability) in every run folder; the
+-dataset-derived meme review grid is only in Git (see README "Rules").
++dataset-derived manual review of the main run (`review/`: meme grid and caption excerpts) is only in Git
++(see README "Rules").
+ 
+-压缩包不含编码器权重和数据集图片文件。`Run_Outputs_20261018_v2.zip` 的每个实验目录含逐样本预测（`sample_id`、数据集标签、预测概率）；由数据集图片生成的人工核对图集只在 Git 中（见 README "Rules"）。
++压缩包不含编码器权重和数据集图片文件。`Run_Outputs_20261018_v2.zip` 的每个实验目录含逐样本预测（`sample_id`、数据集标签、预测概率）；主实验的人工核对目录 `review/`（梗图图集与文字摘录）由数据集生成，只在 Git 中（见 README "Rules"）。
+ 
+ **Unzip every archive at the repository root with `unzip -n`** (never overwrite). The archives
+ already contain their destination folders and write only into `checkpoints/`,
+@@ -69,9 +70,9 @@ python -m src.models.trainer --config configs/train/multimodal_baseline.yaml --r
+ ```
+ 
+ Write re-evaluations inside the run folder (as above), not directly under `outputs/multimodal/`:
+-`scripts/summarize_multimodal_runs.py` counts every folder there as a run.
++`scripts/summarize_multimodal_runs.py` counts any folder there with a `metrics_validation.json` as a run.
+ 
+-重新评估请写到实验目录内部（如上），不要直接放在 `outputs/multimodal/` 下：`scripts/summarize_multimodal_runs.py` 会把那里的每个目录都当作一次实验。
++重新评估请写到实验目录内部（如上），不要直接放在 `outputs/multimodal/` 下：`scripts/summarize_multimodal_runs.py` 会把那里含 `metrics_validation.json` 的目录都当作一次实验。
+ 
+ The cache loaders check every file's SHA-256, sample IDs, order and labels against the dataset
+ metadata before use.
+@@ -102,7 +103,7 @@ The `_v2` archives replace all earlier ones. Do not mix the two sets.
+ |---|---|---|
+ | `Checkpoints_merged_20261018.zip`, `Checkpoints_overfitting_diagnostic_20261018.zip` | the two `Checkpoints_*_v2` archives | same checkpoint files; the old ones had README.md / MANIFEST.csv / SHA256SUMS at the archive root, which collide with the repository README when unzipped at the root |
+ | `Feature_Caches_merged_20261018.zip` | `Feature_Caches_merged_20261018_v2.zip` | same four caches; `reproduction_distilbert_first_token/` added |
+-| `Run_Outputs_20261018.zip` | `Run_Outputs_20261018_v2.zip` | same run folders without the meme review grid (in Git); local path prefixes shortened in `logs/` and in two `checks/end_to_end_validation.json` |
++| `Run_Outputs_20261018.zip` | `Run_Outputs_20261018_v2.zip` | same run folders without the main run's `review/` folder (meme grid and `manual_review.csv`, both in Git); local path prefixes shortened in `logs/` and in two `checks/end_to_end_validation.json` |
+ | `Text_Features_DistilBERT_20261016.zip` | `Feature_Caches_merged_20261018_v2.zip` | same files, new location `data/processed/features/` |
+ | `Multimodal_Assets_20261016.zip` | `Checkpoints_merged_20261018_v2.zip`, `Feature_Caches_merged_20261018_v2.zip`, `Run_Outputs_20261018_v2.zip` | same 14 checkpoints and CPU CLIP cache; run folders and logs as in the row above |
+ | `Image_Features_CLIP_ViTB32_20261006.zip` (image group, [Image_Cloud_Assets.md](Image_Cloud_Assets.md)) | still valid; also inside `Feature_Caches_merged_20261018_v2.zip` | byte-identical cache |
+diff --git a/docs/Multimodal_Test_Results.md b/docs/Multimodal_Test_Results.md
+index af80b8b..2c9af7a 100644
+--- a/docs/Multimodal_Test_Results.md
++++ b/docs/Multimodal_Test_Results.md
+@@ -32,7 +32,7 @@ Recommendation for future CUDA extraction: set `torch.backends.cudnn.allow_tf32
+ 
+ After the code moved to the `configs/ data/ src/{data,features,models,evaluation,serving,utils}` layout (D22), the old code (commit `411629a` of the merge history, not part of this repository) and the new code were run on identical inputs on the same 4-vCPU CPU machine.
+ 
+-代码迁移到新目录结构（D22）后，在同一台 4 vCPU CPU 机器上用相同输入分别运行旧代码（`411629a`）与新代码。
++代码迁移到新目录结构（D22）后，在同一台 4 vCPU CPU 机器上用相同输入分别运行旧代码（合并历史中的提交 `411629a`，不在本仓库历史中）与新代码。
+ 
+ | Check / 检查 | Result / 结果 |
+ |---|---|
+@@ -43,7 +43,7 @@ After the code moved to the `configs/ data/ src/{data,features,models,evaluation
+ | Feature extraction smoke (8 rows; text `[CLS]`, text mean, CLIP) / 特征提取 | old vs new tensors identical |
+ | End-to-end check through the serving predictor / 端到端 | every number equal to the recorded reports (CPU-cache head passes at 6.4e-7; main run's CUDA-cache head reports 0.0131 > 0.01 as before) |
+ | Results report statistics / 结果报告统计 | all 9 CSV files, `feature_agreement.json` and `stats_summary.json` byte-identical |
+-| Unit tests / 单元测试 | 54 tests: 53 passed, 1 skipped (PowerShell not installed); `tests/test_data_loader.py` 27, `test_model.py` 11, `test_serving.py` 16 |
++| Unit tests / 单元测试 | 54 tests: 53 passed, 1 skipped (PowerShell not installed); `tests/test_data_loader.py` 27, `test_model.py` 11, `test_serving.py` 16 (count on 2026-10-17; 57 since 2026-10-18, see below) |
+ | Live API (uvicorn, real encoders) / 在线接口 | `/health`, `/model`, `/predict`, `/predict/batch`, 400 on bad input; 20 validation memes over HTTP vs the CPU-cache run: max probability difference 9.5e-7, labels 20/20; model load 6–6.5 s, `/predict` median 74–98 ms (two runs) |
+ | Notebooks / Notebook | `notebooks/eda.ipynb`, `notebooks/poc_model.ipynb` executed top to bottom; the PoC retrains the baseline in the notebook and matches the recorded run exactly |
+ 
+@@ -54,3 +54,24 @@ The Docker image was not built (no Docker daemon in this session). Test was not
+ 随后进行了对抗式审查（目录规范、文档、代码、服务），确认的问题均已修复，修复后上表所有检查重新运行，结果一致。
+ 
+ 未构建 Docker 镜像（本会话无 Docker 守护进程）。Test 未评分。
++
++## 2026-10-18 · final package from a fresh copy / 最终打包（全新副本）验证
++
++The repository zip (a `git archive` of this commit) was extracted into an empty folder, the four `_v2`
++archives of [Multimodal_Assets.md](Multimodal_Assets.md) were unzipped at its root with `unzip -n`, and
++the documented commands were run as written (4-vCPU CPU machine, local encoder copies).
++
++将仓库 zip（本提交的 `git archive`）解压到空目录，在其根目录用 `unzip -n` 解压 [Multimodal_Assets.md](Multimodal_Assets.md) 中的四个 `_v2` 压缩包，再按文档原样运行命令（4 vCPU CPU 机器，编码器为本地副本）。
++
++| Check / 检查 | Result / 结果 |
++|---|---|
++| Archives / 压缩包 | sizes and SHA-256 as documented; per-archive `SHA256SUMS` 17/17 and 42/42 OK, `docs/checkpoints_SHA256SUMS.txt` 59/59 OK; the 20 files present both in Git and in an archive are byte-identical; no absolute paths in the repository or the archives |
++| Git hygiene / Git 检查 | after every command below, `git add -A --dry-run` lists exactly the 168 files of the repository zip |
++| Unit tests / 单元测试 | 57 tests: 56 passed, 1 skipped (PowerShell not installed); `tests/test_data_loader.py` 27, `test_model.py` 12, `test_serving.py` 18 |
++| Replays / 重放 | `evaluate.py` MATCH with difference 0 for the main run, `_reproduction_cpu` (from the shipped caches), seed-43 baseline and ablations, two diagnostic heads and the final image head; the two `20261001_*` image heads 0.529162 / 0.527606 with `--features_dir` and `--reference_metrics` |
++| Retraining / 重新训练 | `20261016_distilbert_clip_seed42` retrained from the caches: predictions and training log byte-identical, weights equal, epoch 25; `scripts/train.sh` examples equal the shipped heads |
++| End-to-end / 端到端 | `_reproduction_cpu` 6.4e-7 (pass); main head 0.0131 > 0.01 (fails as documented, D19); reports byte-identical to the shipped ones |
++| Results report / 结果报告 | `python -m src.evaluation.results_report` rewrites `Team_Review/multimodal/report/` byte-identically |
++| Live API / 在线接口 | `/health`, `/model`, `/predict` (`data/samples/predict_request.json` → 0.7638478875160217), `/predict/batch`, 400 / 413 / 422 cases |
++
++Test was not scored. Docker was not built (no Docker daemon). / Test 未评分；未构建 Docker 镜像（无 Docker 守护进程）。
+diff --git a/docs/api_spec.md b/docs/api_spec.md
+index 38ee31e..35894b8 100644
+--- a/docs/api_spec.md
++++ b/docs/api_spec.md
+@@ -78,7 +78,7 @@ Model card of the loaded head.
+ }
+ ```
+ 
+-(`text_model` / `clip_model` show the local folder instead when `*_model_dir` is set.)
++(`text_model` / `clip_model` show `local_dir:<folder name>` instead when `*_model_dir` is set.)
+ 
+ ### `POST /predict`
+ 
+diff --git a/docs/checkpoints.md b/docs/checkpoints.md
+index 12501ae..55da0f7 100644
+--- a/docs/checkpoints.md
++++ b/docs/checkpoints.md
+@@ -70,7 +70,7 @@ outputs/<task>/<run_id>/                  # 实验记录
+ 
+ ### 4.1 图片组（3 个）
+ 
+-3 个线性头使用相同的冻结 CLIP 特征。在最终缓存 `20261006_code_fixes_validation_v2` 上重放：原始基线 0.529162，Zhihan 复现 0.527606，最终参考 0.527606（[Image_Test_Results.md](Image_Test_Results.md)）。**注意**：图片组仓库中 `20261001_clip_vitb32_seed42_zhihan_rtx3080/best.pt` 与 `20261006_code_fixes_validation_v2/best.pt` 是逐字节相同的同一个文件（SHA-256 相同），这里按原样保留两个路径。两个 `20261001_*` 分类头没有实验目录（`outputs/image/20261001_*` 不存在），用 `evaluate.py` 重放时需用 `--reference_metrics` 指定参考指标文件（例如 `outputs/image/20261006_code_fixes_validation_v2/metrics_validation.json`），或直接与上面的数值比较。
++3 个线性头使用相同的冻结 CLIP 特征。在最终缓存 `20261006_code_fixes_validation_v2` 上重放：原始基线 0.529162，Zhihan 复现 0.527606，最终参考 0.527606（[Image_Test_Results.md](Image_Test_Results.md)）。**注意**：图片组仓库中 `20261001_clip_vitb32_seed42_zhihan_rtx3080/best.pt` 与 `20261006_code_fixes_validation_v2/best.pt` 是逐字节相同的同一个文件（SHA-256 相同），这里按原样保留两个路径。两个 `20261001_*` 分类头没有实验目录（`outputs/image/20261001_*` 不存在），它们也没有记录特征目录，用 `evaluate.py` 重放时需同时指定特征缓存和参考指标文件：`python -m src.evaluation.evaluate --run_id 20261001_clip_vitb32_seed42 --features_dir data/processed/features/20261006_code_fixes_validation_v2 --reference_metrics outputs/image/20261006_code_fixes_validation_v2/metrics_validation.json --out_dir outputs/image/replay_20261001`（Zhihan 的分类头同理），或直接与上面的数值比较。
+ 
+ | 标注 | run_id | seed | epoch | 验证 Macro-F1 | 分类头 | SHA-256 |
+ |---|---|---|---|---|---|---|
+@@ -164,7 +164,7 @@ export MEMOTION_DATA_DIR=/path/to/MMSoc_Memotion_exported        # 缓存校验
+ 
+ # 重放一个分类头（与记录的指标比较，容差 0.01）。仓库中的参考实验已有 reeval/，请给新目录；
+ # 其他 run 的参考指标 outputs/<task>/<run_id>/metrics_validation.json 在 Run_Outputs_20261018_v2.zip 中
+-# （两个 20261001_* 图片头没有实验目录，需加 --reference_metrics <metrics_validation.json>，见 4.1）
++# （两个 20261001_* 图片头没有实验目录，需加 --features_dir 与 --reference_metrics，见 4.1）
+ python -m src.evaluation.evaluate --run_id 20261016_distilbert_clip_seed42 \
+     --out_dir outputs/multimodal/20261016_distilbert_clip_seed42/reeval_mine
+ python -m src.evaluation.evaluate --run_id 20261006_code_fixes_validation_v2 \
+@@ -192,6 +192,6 @@ prob = head(text=text_features, image=image_features).softmax(-1)[:, 1]   # P(sa
+ ## 6. 注意事项 / Caveats
+ 
+ * 验证集只有 699 张，约 0.03–0.04 以下的 Macro-F1 差异无法分辨；使用图像的分类头，单次实验所选 epoch 的值约偏高 0.015–0.02（纯文字约 0.046）。
+-* 2026-10-16 的融合与纯图像分类头（MLP 512）在所选 epoch 几乎完美拟合训练集（训练 ROC-AUC 0.999–0.9997，验证 0.525–0.550），验证 loss 因高置信错误上升，概率偏过度自信，不宜当作校准后的概率使用。纯文字（训练 0.61–0.63）、诊断中的线性头（0.69–0.73）和学习率 1e-4（0.84–0.90）拟合明显更弱（[过拟合诊断](../Team_Review/multimodal/overfitting/README.md)）。
++* 2026-10-16 的融合基线与纯图像分类头（MLP 512，seed 42–44）在所选 epoch 几乎完美拟合训练集（训练 ROC-AUC 0.999–0.9997，验证 0.525–0.550；mean pooling 与 `_reproduction_cpu` 融合头相近），验证 loss 因高置信错误上升，概率偏过度自信，不宜当作校准后的概率使用。纯文字（训练 0.61–0.63）、诊断中的线性头（0.69–0.73）和学习率 1e-4（0.84–0.90）拟合明显更弱（[过拟合诊断](../Team_Review/multimodal/overfitting/README.md)）。
+ * 纯文字分类头接近或低于随机水平：冻结 DistilBERT 特征在这个任务上没有可测量的信号。
+ * Test 从未评分；最终评估只做一次，且图片组缓存没有 test 划分，需要使用 `clip_vitb32_pooler_cpu`。
+diff --git a/docs/multimodal_baseline.md b/docs/multimodal_baseline.md
+index 0bd286a..ce535d6 100644
+--- a/docs/multimodal_baseline.md
++++ b/docs/multimodal_baseline.md
+@@ -67,9 +67,10 @@ python -m src.evaluation.evaluate --run_id 20261016_distilbert_clip_seed42 \
+     --out_dir outputs/multimodal/20261016_distilbert_clip_seed42/reeval_mine
+ 
+ # 5. rerun on re-extracted text + CPU image features (the teammate's second-member reproduction is still required)
+-python -m src.features.feature_engineering text --out_prefix data/processed/features/reproduction_distilbert
++#    (reproduction_distilbert_first_token/ in the cache archive is the recorded re-extraction; write yours to a new prefix)
++python -m src.features.feature_engineering text --out_prefix data/processed/features/reproduction_mine_distilbert
+ python -m src.models.trainer --config configs/train/multimodal_baseline.yaml \
+-    --text_features_dir data/processed/features/reproduction_distilbert_first_token \
++    --text_features_dir data/processed/features/reproduction_mine_distilbert_first_token \
+     --image_features_dir data/processed/features/clip_vitb32_pooler_cpu --run_id 20261016_distilbert_clip_seed42_reproduction_mine
+ python -m scripts.verify_reproduction \
+     --reference_metrics outputs/multimodal/20261016_distilbert_clip_seed42/metrics_validation.json \
+@@ -87,7 +88,7 @@ python -m src.evaluation.review_samples --run_id 20261016_distilbert_clip_seed42
+ # 8. ablations and extra seeds (supplementary, validation only)
+ python -m src.models.trainer --config configs/train/multimodal_text_only.yaml   # also _image_only, _mean_pooling
+ python -m src.models.trainer --config configs/train/multimodal_baseline.yaml --seed 43
+-python -m scripts.summarize_multimodal_runs
++python -m scripts.summarize_multimodal_runs --pattern '20261016_*'   # without the pattern it also lists the 42 sweep runs
+ 
+ # 9. statistics and figures for the results report (validation only)
+ python -m src.evaluation.results_report
+diff --git a/scripts/summarize_multimodal_runs.py b/scripts/summarize_multimodal_runs.py
+index 03651ad..4cee6a5 100644
+--- a/scripts/summarize_multimodal_runs.py
++++ b/scripts/summarize_multimodal_runs.py
+@@ -1,6 +1,7 @@
+ """Collect validation metrics of multimodal runs into one table (per seed and mean +/- std).
+ 
+-    python -m scripts.summarize_multimodal_runs --out Team_Review/multimodal/validation_runs.csv
++    python -m scripts.summarize_multimodal_runs --pattern '20261016_*' --out Team_Review/multimodal/validation_runs.csv
++    (the pattern keeps the 2026-10-16 runs of the committed table; '*' also lists the 20261018_overfit_* sweep)
+ 
+ Reads outputs/multimodal/<run_id>/metrics_validation.json for every run whose id matches
+ --pattern; reproduction/rerun folders are skipped unless --include_reproductions is given.
+diff --git a/scripts/train.sh b/scripts/train.sh
+index 4e545c5..eb1cf41 100755
+--- a/scripts/train.sh
++++ b/scripts/train.sh
+@@ -1,7 +1,7 @@
+ #!/usr/bin/env bash
+ # Train a head on cached frozen-encoder features (src/models/trainer.py).
+ #   bash scripts/train.sh                                                   # multimodal baseline
+-#   bash scripts/train.sh configs/train/image_baseline.yaml --run_id my_image_run \
++#   bash scripts/train.sh configs/train/image_baseline.yaml --run_id my_image_run_group_cache \
+ #       --features_dir data/processed/features/20261006_code_fixes_validation_v2   # shipped image-group cache
+ #   bash scripts/train.sh configs/train/multimodal_text_only.yaml --seed 43
+ #   CONFIG=configs/train/multimodal_mean_pooling.yaml bash scripts/train.sh
+diff --git a/src/serving/predictor.py b/src/serving/predictor.py
+index 1b70a87..5763cf3 100644
+--- a/src/serving/predictor.py
++++ b/src/serving/predictor.py
+@@ -74,10 +74,13 @@ class MultimodalPredictor:
+             "trained_head": self.trained,
+             "threshold": self.threshold,
+             "labels": {str(k): v for k, v in LABEL_NAMES.items()},
+-            "text_model": text_model_dir or f"{config['text_model_id']}@{config['text_revision']}",
++            # local copies are shown by folder name only, so /model does not reveal machine paths
++            "text_model": (f"local_dir:{Path(text_model_dir).name}" if text_model_dir
++                           else f"{config['text_model_id']}@{config['text_revision']}"),
+             "text_feature": config["text_feature"],
+             "text_max_length": config["text_max_length"],
+-            "clip_model": clip_model_dir or f"{config['clip_model_id']}@{config['clip_revision']}",
++            "clip_model": (f"local_dir:{Path(clip_model_dir).name}" if clip_model_dir
++                           else f"{config['clip_model_id']}@{config['clip_revision']}"),
+             "image_feature": config["image_feature"],
+             "device": str(self.device),
+             **(info or {}),
+-- 
+2.43.0
+

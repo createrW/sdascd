@@ -9,7 +9,8 @@ clip_revision: 3d74acf
 feature: pooler_output
 
 features:
-  # written by `python -m src.features.feature_engineering image` (full train/validation run)
+  # written by `python -m src.features.feature_engineering image` (full train/validation run);
+  # with the shipped caches pass --features_dir data/processed/features/20261006_code_fixes_validation_v2
   image: data/processed/features/clip_vitb32_pooler
 
 head:

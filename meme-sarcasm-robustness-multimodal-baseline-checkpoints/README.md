@@ -1,5 +1,9 @@
 # Checkpoints of the merged repository / 合并后仓库的全部分类头
 
+> This folder holds the 59 raw `best.pt` files. The full guide is [`docs/checkpoints.md`](../meme-sarcasm-robustness-multimodal-baseline/docs/checkpoints.md); for a new repository use the `_v2` archives listed in [`docs/Multimodal_Assets.md`](../meme-sarcasm-robustness-multimodal-baseline/docs/Multimodal_Assets.md) (copy this folder's `checkpoints/` to the repository root, or unzip the archives there with `unzip -n`).
+>
+> 本目录是 59 个原始 `best.pt`。完整说明见 `docs/checkpoints.md`；新仓库请使用 `docs/Multimodal_Assets.md` 中列出的 `_v2` 压缩包。
+
 Unzip **at the repository root** (`meme-sarcasm-robustness-multimodal-baseline/`); files land in
 `checkpoints/image/<run_id>/best.pt` and `checkpoints/multimodal/<run_id>/best.pt`, where the
 evaluator, the serving config and the results report expect them. Feature caches are a separate

@@ -33,9 +33,9 @@ Results, reproduction evidence and the manual review are in [Team_Review/multimo
 
 ## Image features / 图片特征
 
-The baseline uses the image group's reference cache `Image_Features_CLIP_ViTB32_20261006.zip` (SHA-256 `7a02d46b…5662`, train + validation, 768-d `pooler_output`, CUDA). It has no test split. The same encoder was therefore re-run on CPU for train/validation/test (`data/processed/features/clip_vitb32_pooler_cpu`). Both caches agree to mean cosine 0.99997. The few larger gaps (38 images below 0.999, minimum 0.981) are explained by TF32 in the CUDA patch-embedding convolution. Emulating TF32 brings the six worst images to cosine 1.00000 and cuts the mean difference on 64 validation images from 1.7e-3 to 2.9e-5 ([test report](Multimodal_Test_Results.md)).
+The baseline uses the image group's reference cache `Image_Features_CLIP_ViTB32_20261006.zip` (SHA-256 `7a02d46b…5662`, train + validation, 768-d `pooler_output`, CUDA). It has no test split. The same encoder was therefore re-run on CPU for train/validation/test (`data/processed/features/clip_vitb32_pooler_cpu`). Both caches agree to mean cosine 0.99997. The few larger gaps (38 images below 0.999, minimum 0.981) are explained by TF32 in the CUDA patch-embedding convolution. Emulating TF32 brings the 10 worst train and 10 worst validation images to cosine ≥ 0.9999999 and cuts the mean difference on 64 validation images from 1.7e-3 to 2.9e-5 ([test report](Multimodal_Test_Results.md)).
 
-基线使用图片组的参考缓存 `Image_Features_CLIP_ViTB32_20261006.zip`（SHA-256 `7a02d46b…5662`，train + validation，768 维 `pooler_output`，CUDA 提取），其中没有 test。因此在 CPU 上用同一编码器重新提取了 train/validation/test（`data/processed/features/clip_vitb32_pooler_cpu`）。两份缓存的平均余弦相似度为 0.99997；少数较大差异（38 张低于 0.999，最小 0.981）可由 CUDA patch-embedding 卷积的 TF32 解释：模拟 TF32 后，最差的 6 张余弦达到 1.00000，64 张 validation 图片的平均差从 1.7e-3 降到 2.9e-5（[检测报告](Multimodal_Test_Results.md)）。
+基线使用图片组的参考缓存 `Image_Features_CLIP_ViTB32_20261006.zip`（SHA-256 `7a02d46b…5662`，train + validation，768 维 `pooler_output`，CUDA 提取），其中没有 test。因此在 CPU 上用同一编码器重新提取了 train/validation/test（`data/processed/features/clip_vitb32_pooler_cpu`）。两份缓存的平均余弦相似度为 0.99997；少数较大差异（38 张低于 0.999，最小 0.981）可由 CUDA patch-embedding 卷积的 TF32 解释：模拟 TF32 后，train 与 validation 各自最差的 10 张图片余弦达到 ≥ 0.9999999，64 张 validation 图片的平均差从 1.7e-3 降到 2.9e-5（[检测报告](Multimodal_Test_Results.md)）。
 
 ## Commands / 命令
 
@@ -58,8 +58,8 @@ python -m src.features.feature_engineering image --splits train validation test 
 # 3. train the fusion MLP (README 6 outputs + checkpoints/multimodal/<run_id>/best.pt);
 #    feature dirs come from the config's `features:` block
 #    (the recorded run is 20261016_distilbert_clip_seed42; choose a new run_id, existing runs are never overwritten)
-python -m src.models.trainer --config configs/train/multimodal_baseline.yaml --run_id 20261016_distilbert_clip_seed42_mine
-python -m scripts.verify_predictions outputs/multimodal/20261016_distilbert_clip_seed42_mine/predictions_validation.csv
+python -m src.models.trainer --config configs/train/multimodal_baseline.yaml --run_id my_distilbert_clip_seed42
+python -m scripts.verify_predictions outputs/multimodal/my_distilbert_clip_seed42/predictions_validation.csv
 
 # 4. reload the saved head (compares with the reported metrics, tolerance 0.01); = bash scripts/eval.sh <run_id>
 #    the shipped reference runs already have reeval/ and checks/, so give them a new output path
@@ -67,9 +67,10 @@ python -m src.evaluation.evaluate --run_id 20261016_distilbert_clip_seed42 \
     --out_dir outputs/multimodal/20261016_distilbert_clip_seed42/reeval_mine
 
 # 5. rerun on re-extracted text + CPU image features (the teammate's second-member reproduction is still required)
-python -m src.features.feature_engineering text --out_prefix data/processed/features/reproduction_distilbert
+#    (reproduction_distilbert_first_token/ in the cache archive is the recorded re-extraction; write yours to a new prefix)
+python -m src.features.feature_engineering text --out_prefix data/processed/features/reproduction_mine_distilbert
 python -m src.models.trainer --config configs/train/multimodal_baseline.yaml \
-    --text_features_dir data/processed/features/reproduction_distilbert_first_token \
+    --text_features_dir data/processed/features/reproduction_mine_distilbert_first_token \
     --image_features_dir data/processed/features/clip_vitb32_pooler_cpu --run_id 20261016_distilbert_clip_seed42_reproduction_mine
 python -m scripts.verify_reproduction \
     --reference_metrics outputs/multimodal/20261016_distilbert_clip_seed42/metrics_validation.json \
@@ -85,9 +86,11 @@ python -m src.evaluation.review_samples --run_id 20261016_distilbert_clip_seed42
     --out_dir outputs/multimodal/20261016_distilbert_clip_seed42/review_mine
 
 # 8. ablations and extra seeds (supplementary, validation only)
-python -m src.models.trainer --config configs/train/multimodal_text_only.yaml   # also _image_only, _mean_pooling
-python -m src.models.trainer --config configs/train/multimodal_baseline.yaml --seed 43
-python -m scripts.summarize_multimodal_runs
+#    (give your runs a prefix of your own, e.g. my_; the recorded runs start with 20261016_ and 20261018_overfit_)
+python -m src.models.trainer --config configs/train/multimodal_text_only.yaml --run_id my_text_only_seed42   # also _image_only, _mean_pooling
+python -m src.models.trainer --config configs/train/multimodal_baseline.yaml --seed 43 --run_id my_distilbert_clip_seed43
+python -m scripts.summarize_multimodal_runs --pattern 'my_*'        # your runs
+python -m scripts.summarize_multimodal_runs --pattern '20261016_*'  # the recorded 2026-10-16 runs (Team_Review/multimodal/validation_runs.csv)
 
 # 9. statistics and figures for the results report (validation only)
 python -m src.evaluation.results_report
@@ -117,7 +120,7 @@ The default path loads the pinned Hub revisions. If `huggingface.co` is blocked,
 | Encoder / 编码器 | Local copy used here / 本次使用的本地副本 | Check / 校验 |
 |---|---|---|
 | DistilBERT | Hugging Face's legacy S3 files `distilbert-base-uncased-{pytorch_model.bin,config.json,tokenizer.json}` + `bert-base-uncased-vocab.txt`, plus `tokenizer_config.json` `{"do_lower_case": true, "model_max_length": 512}` | weights SHA-256 `e60d7161…ea7c` (recorded in every cache `meta.json`); 66,362,880 parameters; all 100 encoder tensors load; MLM sanity check sensible |
-| CLIP ViT-B/32 | OpenAI `ViT-B-32.pt`, converted by `scripts/convert_openai_clip_to_hf.py` | SHA-256 `40d36571…0af` = hash in OpenAI's official URL; with TF32 emulated, the six worst-matching images reach cosine 1.00000 against the image group's CUDA features |
+| CLIP ViT-B/32 | OpenAI `ViT-B-32.pt`, converted by `scripts/convert_openai_clip_to_hf.py` | SHA-256 `40d36571…0af` = hash in OpenAI's official URL; with TF32 emulated, the 10 worst-matching train and 10 worst validation images reach cosine ≥ 0.9999999 against the image group's CUDA features |
 
 ## Files / 文件
 

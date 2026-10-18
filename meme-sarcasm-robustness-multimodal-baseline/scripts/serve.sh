@@ -5,7 +5,7 @@
 #   SERVING_CONFIG=my_serving.yaml PORT=9000 bash scripts/serve.sh
 #   TEXT_MODEL_DIR=hf_local/distilbert-base-uncased CLIP_MODEL_DIR=hf_local/clip-vit-base-patch32 \
 #       bash scripts/serve.sh                            # offline: local copies of the pinned encoders
-# The default checkpoint comes from Multimodal_Assets_20261016.zip (docs/Multimodal_Assets.md).
+# The default checkpoint comes from Checkpoints_merged_20261018_v2.zip (docs/checkpoints.md).
 # Then: curl -s localhost:8000/health
 #       curl -s -X POST localhost:8000/predict -H 'Content-Type: application/json' \
 #            -d @data/samples/predict_request.json

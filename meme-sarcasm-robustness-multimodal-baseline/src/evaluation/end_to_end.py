@@ -92,8 +92,11 @@ def main(argv=None):
     report = {"run_id": args.run_id, "n": len(ids), "device": str(device),
               "text_features_dir": ckpt["text_features_dir"],
               "image_features_dir": ckpt["image_features_dir"],
-              "text_model": args.text_model_dir or f"{cfg['text_model_id']}@{cfg['text_revision']}",
-              "clip_model": args.clip_model_dir or f"{cfg['clip_model_id']}@{cfg['clip_revision']}"}
+              # local copies are recorded by folder name only (no machine-specific paths)
+              "text_model": (f"local_dir:{Path(args.text_model_dir).name}" if args.text_model_dir
+                             else f"{cfg['text_model_id']}@{cfg['text_revision']}"),
+              "clip_model": (f"local_dir:{Path(args.clip_model_dir).name}" if args.clip_model_dir
+                             else f"{cfg['clip_model_id']}@{cfg['clip_revision']}")}
     for name, key in (("text", "text_features"), ("image", "image_features")):
         ref = F.normalize(cached[name][index], dim=-1)
         diff = (outs[key] - ref).abs()

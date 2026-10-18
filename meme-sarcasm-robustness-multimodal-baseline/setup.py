@@ -5,7 +5,8 @@
     meme-serve --serving_config configs/deploy/serving.yaml
 
 Commands run from the repository root, like the python -m forms in README.md, because configs,
-data/, outputs/ and checkpoints/ are repository-relative.
+data/, outputs/ and checkpoints/ are repository-relative. Only editable installs are supported: the
+code is the top-level package `src`, and configs/ are not package data.
 """
 from setuptools import find_packages, setup
 
@@ -24,7 +25,7 @@ setup(
         "pyyaml>=6.0",
     ],
     extras_require={
-        "serving": ["fastapi>=0.110", "uvicorn>=0.29"],
+        "serving": ["fastapi>=0.110", "uvicorn>=0.29", "pydantic>=2"],
         "dev": ["httpx>=0.27", "nbclient>=0.10", "ipykernel>=6.29", "jupyterlab>=4.0"],
     },
     entry_points={

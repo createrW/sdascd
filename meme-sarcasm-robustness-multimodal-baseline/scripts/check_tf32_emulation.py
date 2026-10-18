@@ -56,7 +56,9 @@ def main():
     kwargs = {} if args.clip_model_dir else {"revision": "3d74acf"}
     model = CLIPModel.from_pretrained(source, **kwargs).eval()
     processor = AutoImageProcessor.from_pretrained(source, **kwargs)
-    report = {"clip_source": str(source), "groups": {}}
+    # a local copy is recorded by folder name only (no machine-specific paths)
+    report = {"clip_source": f"local_dir:{Path(source).name}" if args.clip_model_dir else source,
+              "groups": {}}
 
     reference_dir = resolve_features_dir(args.reference_dir)
     cpu_dir = resolve_features_dir("data/processed/features/clip_vitb32_pooler_cpu")

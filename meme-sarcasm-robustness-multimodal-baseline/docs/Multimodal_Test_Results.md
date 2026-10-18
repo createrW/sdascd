@@ -1,8 +1,8 @@
 # Multimodal verification / 多模态检测记录
 
-Verified on 2026-10-16 from the repository root. Environment: Linux, 4 vCPU, no GPU, Python 3.12.3, PyTorch 2.11.0, torchvision 0.26.0, Transformers 5.18.0. Dataset `MMSoc_Memotion_exported.zip` (SHA-256 `9d019fb4…330c`). Step logs are in `logs/` inside `Multimodal_Assets_20261016.zip` ([asset list](Multimodal_Assets.md)).
+Verified on 2026-10-16 from the repository root. Environment: Linux, 4 vCPU, no GPU, Python 3.12.3, PyTorch 2.11.0, torchvision 0.26.0, Transformers 5.18.0. Dataset `MMSoc_Memotion_exported.zip` (SHA-256 `9d019fb4…330c`). Step logs are in `logs/` inside `Run_Outputs_20261018_v2.zip` ([asset list](Multimodal_Assets.md)).
 
-2026-10-16 在仓库根目录检测。环境：Linux、4 vCPU、无 GPU、Python 3.12.3、PyTorch 2.11.0、torchvision 0.26.0、Transformers 5.18.0。数据集 `MMSoc_Memotion_exported.zip`（SHA-256 `9d019fb4…330c`）。逐步日志在 `Multimodal_Assets_20261016.zip` 的 `logs/` 中（[资料清单](Multimodal_Assets.md)）。
+2026-10-16 在仓库根目录检测。环境：Linux、4 vCPU、无 GPU、Python 3.12.3、PyTorch 2.11.0、torchvision 0.26.0、Transformers 5.18.0。数据集 `MMSoc_Memotion_exported.zip`（SHA-256 `9d019fb4…330c`）。逐步日志在 `Run_Outputs_20261018_v2.zip` 的 `logs/` 中（[资料清单](Multimodal_Assets.md)）。
 
 | Check / 检查 | Result / 结果 |
 |---|---|
@@ -11,9 +11,9 @@ Verified on 2026-10-16 from the repository root. Environment: Linux, 4 vCPU, no 
 | Text extraction / 文字特征提取 | train 67.0 s, validation 7.6 s, test 8.3 s on CPU; 768-d, finite; `[NO_TEXT]` 1 train / 3 test; >128 tokens 4 train / 1 test; median 20 tokens |
 | Text re-extraction / 文字特征重提取 | fresh extraction into new folders is bit-identical on all three splits (max abs diff 0) |
 | CLIP on CPU vs image group CUDA cache / CPU 与 CUDA 图片特征 | mean cosine 0.99997 (train and validation); mean abs diff 1.8e-3 (feature mean abs 0.73); min cosine 0.9815 (`train_004233`), 0.9854 (`validation_000550`) |
-| Cause of that gap / 差异原因 | `scripts/check_tf32_emulation.py` (output `Team_Review/multimodal/report/tf32_emulation.json`) rounds the patch-embedding convolution to TF32, PyTorch's CUDA default (`cudnn.allow_tf32=True`). On the first 64 validation images the mean abs diff drops from 1.7e-3 to 2.9e-5. The 10 worst train and 10 worst validation images go from cosine 0.981–0.985 to ≥ 0.99999995. Weights and preprocessing agree; the CUDA cache is the approximate one. |
+| Cause of that gap / 差异原因 | `scripts/check_tf32_emulation.py` (output `Team_Review/multimodal/report/tf32_emulation.json`) rounds the patch-embedding convolution to TF32, PyTorch's CUDA default (`cudnn.allow_tf32=True`). On the first 64 validation images the mean abs diff drops from 1.7e-3 to 2.9e-5. The 10 worst train and 10 worst validation images go from cosine 0.981–0.985 to ≥ 0.9999999. Weights and preprocessing agree; the CUDA cache is the approximate one. |
 | Image head on CPU features / 图片分类头使用 CPU 特征 | image group's final head: Macro-F1 0.528634 vs reported 0.527606 (diff 0.0010, within D11) |
-| Unit tests / 单元测试 | `tests/test_multimodal_pipeline.py`: 9/9 pass. Image suite: 15/16 pass; `test_reproduction_script_requires_dataset_and_one_cache_mode` needs `powershell`, which Linux does not have (not related to this change) |
+| Unit tests / 单元测试 | `tests/test_multimodal_pipeline.py` (the pre-restructure test file; its tests now live in `tests/test_data_loader.py` and `tests/test_model.py`, D22): 9/9 pass. Image suite: 15/16 pass; `test_reproduction_script_requires_dataset_and_one_cache_mode` needs `powershell`, which Linux does not have (not related to this change) |
 | Smoke test / Smoke test | text (2, 768), image (2, 768), fused (2, 1536), logits (2, 2); `MULTIMODAL SMOKE TEST OK` |
 | Main run / 主实验 | `20261016_distilbert_clip_seed42`: Macro-F1 0.533637, accuracy 0.656652, best epoch 25/30, 43.5 s; `PREDICTIONS OK` (699 rows) |
 | Checkpoint reload / Checkpoint 重载 | identical metrics and prediction CSV (tolerance 0) |
@@ -30,9 +30,9 @@ Recommendation for future CUDA extraction: set `torch.backends.cudnn.allow_tf32 
 
 ## 2026-10-17 · repository restructure verification / 目录重构验证
 
-After the code moved to the `configs/ data/ src/{data,features,models,evaluation,serving,utils}` layout (D22), the old code (commit `411629a`) and the new code were run on identical inputs on the same 4-vCPU CPU machine.
+After the code moved to the `configs/ data/ src/{data,features,models,evaluation,serving,utils}` layout (D22), the old code (commit `411629a` of the merge history, not part of this repository) and the new code were run on identical inputs on the same 4-vCPU CPU machine.
 
-代码迁移到新目录结构（D22）后，在同一台 4 vCPU CPU 机器上用相同输入分别运行旧代码（`411629a`）与新代码。
+代码迁移到新目录结构（D22）后，在同一台 4 vCPU CPU 机器上用相同输入分别运行旧代码（合并历史中的提交 `411629a`，不在本仓库历史中）与新代码。
 
 | Check / 检查 | Result / 结果 |
 |---|---|
@@ -43,7 +43,7 @@ After the code moved to the `configs/ data/ src/{data,features,models,evaluation
 | Feature extraction smoke (8 rows; text `[CLS]`, text mean, CLIP) / 特征提取 | old vs new tensors identical |
 | End-to-end check through the serving predictor / 端到端 | every number equal to the recorded reports (CPU-cache head passes at 6.4e-7; main run's CUDA-cache head reports 0.0131 > 0.01 as before) |
 | Results report statistics / 结果报告统计 | all 9 CSV files, `feature_agreement.json` and `stats_summary.json` byte-identical |
-| Unit tests / 单元测试 | 54 tests: 53 passed, 1 skipped (PowerShell not installed); `tests/test_data_loader.py` 27, `test_model.py` 11, `test_serving.py` 16 |
+| Unit tests / 单元测试 | 54 tests: 53 passed, 1 skipped (PowerShell not installed); `tests/test_data_loader.py` 27, `test_model.py` 11, `test_serving.py` 16 (count on 2026-10-17; 57 since 2026-10-18, see below) |
 | Live API (uvicorn, real encoders) / 在线接口 | `/health`, `/model`, `/predict`, `/predict/batch`, 400 on bad input; 20 validation memes over HTTP vs the CPU-cache run: max probability difference 9.5e-7, labels 20/20; model load 6–6.5 s, `/predict` median 74–98 ms (two runs) |
 | Notebooks / Notebook | `notebooks/eda.ipynb`, `notebooks/poc_model.ipynb` executed top to bottom; the PoC retrains the baseline in the notebook and matches the recorded run exactly |
 
@@ -54,3 +54,24 @@ The Docker image was not built (no Docker daemon in this session). Test was not 
 随后进行了对抗式审查（目录规范、文档、代码、服务），确认的问题均已修复，修复后上表所有检查重新运行，结果一致。
 
 未构建 Docker 镜像（本会话无 Docker 守护进程）。Test 未评分。
+
+## 2026-10-18 · final package from a fresh copy / 最终打包（全新副本）验证
+
+The repository zip (a `git archive` of this commit) was extracted into an empty folder, the four `_v2`
+archives of [Multimodal_Assets.md](Multimodal_Assets.md) were unzipped at its root with `unzip -n`, and
+the documented commands were run as written (4-vCPU CPU machine, local encoder copies).
+
+将仓库 zip（本提交的 `git archive`）解压到空目录，在其根目录用 `unzip -n` 解压 [Multimodal_Assets.md](Multimodal_Assets.md) 中的四个 `_v2` 压缩包，再按文档原样运行命令（4 vCPU CPU 机器，编码器为本地副本）。
+
+| Check / 检查 | Result / 结果 |
+|---|---|
+| Archives / 压缩包 | sizes and SHA-256 as documented; per-archive `SHA256SUMS` 17/17 and 42/42 OK, `docs/checkpoints_SHA256SUMS.txt` 59/59 OK; the 20 files present both in Git and in an archive are byte-identical; no absolute paths in the repository or the archives |
+| Git hygiene / Git 检查 | after every command below, `git add -A --dry-run` lists exactly the 168 files of the repository zip |
+| Unit tests / 单元测试 | 57 tests: 56 passed, 1 skipped (PowerShell not installed); `tests/test_data_loader.py` 27, `test_model.py` 12, `test_serving.py` 18 |
+| Replays / 重放 | `evaluate.py` MATCH with difference 0 for the main run, `_reproduction_cpu` (from the shipped caches), seed-43 baseline and ablations, two diagnostic heads and the final image head; the two `20261001_*` image heads 0.529162 / 0.527606 with `--features_dir` and `--reference_metrics` |
+| Retraining / 重新训练 | `20261016_distilbert_clip_seed42` retrained from the caches: predictions and training log byte-identical, weights equal, epoch 25; `scripts/train.sh` multimodal examples byte-identical to the shipped heads; the image example selects the same epoch with the same metrics and labels (probabilities within 3e-7; the shipped image head was trained on CUDA) |
+| End-to-end / 端到端 | `_reproduction_cpu` 6.4e-7 (pass); main head 0.0131 > 0.01 (fails as documented, D19); reports byte-identical to the shipped ones |
+| Results report / 结果报告 | `python -m src.evaluation.results_report` rewrites `Team_Review/multimodal/report/` byte-identically |
+| Live API / 在线接口 | `/health`, `/model`, `/predict` (`data/samples/predict_request.json` → 0.7638478875160217), `/predict/batch`, 400 / 413 / 422 cases |
+
+Test was not scored. Docker was not built (no Docker daemon). / Test 未评分；未构建 Docker 镜像（无 Docker 守护进程）。

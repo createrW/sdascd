@@ -1,7 +1,7 @@
 From e6de0fe3de47774e7e9d8e69ad134d62fdc91917 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Sun, 18 Oct 2026 02:01:30 +0000
-Subject: [PATCH 3/4] Add overfitting diagnostic; fix findings of the
+Subject: [PATCH 3/8] Add overfitting diagnostic; fix findings of the
  review-fix verification
 
 Overfitting diagnostic (src/evaluation/overfitting_diagnostic.py,

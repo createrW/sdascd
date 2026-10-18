@@ -1,0 +1,225 @@
+From dae804334aa76150859030e9a9e821be5eede98f Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 18 Oct 2026 06:52:27 +0000
+Subject: [PATCH 8/8] Fix findings of the third fresh-copy verification
+
+- multimodal_baseline.md: your own runs use a my_ prefix (step 3 and step 8), so the
+  summary of the recorded 20261016_* runs is not mixed with them; step 8 shows both
+  summaries.
+- summarize_multimodal_runs --out refuses an existing file (README: never overwrite);
+  the docstring writes a new file and compares it with the committed table.
+- checkpoints.md 4.1: the Zhihan replay needs its own --out_dir; data/README.md notes
+  that the two 20261001 image heads need --features_dir and --reference_metrics.
+- api_spec.md / predictor.py: /model echoes the configured checkpoint path; only encoder
+  folders are reduced to their names.
+- Multimodal_Assets.md: the summary script skips reproduction/rerun names.
+- Image_Cloud_Assets.csv: the verification archive comes from the image group's clean
+  branch of the original team repository.
+- Multimodal_Test_Results.md: the image train.sh example matches the shipped head's
+  epoch, metrics and labels (probabilities within 3e-7), not byte for byte.
+- .dockerignore excludes *.bin, *.onnx, *.h5 at any depth; .gitignore ignores *.bin.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_012mxouBDiknGrGqchsM6QFE
+---
+ .dockerignore                        |  3 +++
+ .gitignore                           |  1 +
+ data/README.md                       |  3 ++-
+ docs/Image_Cloud_Assets.csv          |  2 +-
+ docs/Multimodal_Assets.md            |  4 ++--
+ docs/Multimodal_Test_Results.md      |  2 +-
+ docs/api_spec.md                     |  3 ++-
+ docs/checkpoints.md                  |  2 +-
+ docs/multimodal_baseline.md          | 12 +++++++-----
+ scripts/summarize_multimodal_runs.py | 12 ++++++++++--
+ src/serving/predictor.py             |  2 +-
+ 11 files changed, 31 insertions(+), 15 deletions(-)
+
+diff --git a/.dockerignore b/.dockerignore
+index 0791495..083755f 100644
+--- a/.dockerignore
++++ b/.dockerignore
+@@ -36,3 +36,6 @@ runs
+ **/*.ckpt
+ **/*.safetensors
+ **/*.npy
++**/*.bin
++**/*.onnx
++**/*.h5
+diff --git a/.gitignore b/.gitignore
+index 3007d23..e99ebf7 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -45,6 +45,7 @@ datasets/
+ *.pth
+ *.ckpt
+ *.safetensors
++*.bin
+ *.npy
+ 
+ # Checkpoints stay local by default. The image group's tiny linear-head
+diff --git a/data/README.md b/data/README.md
+index c8a57c1..fedca62 100644
+--- a/data/README.md
++++ b/data/README.md
+@@ -27,7 +27,8 @@ Checkpoints and run configs recorded before this layout name `features/<name>`.
+ trainer's records, `evaluate.py`, `results_report.py` and `check_tf32_emulation.py` (all through
+ `src/features/cache.py::resolve_features_dir`) and `reproduce_image.ps1` accept either location:
+ `features/<name>` falls back to `data/processed/features/<name>` and the other way round. So old
+-commands, shipped heads and archives unpacked at the repository root still work. Exceptions:
++commands, shipped heads and archives unpacked at the repository root still work. (The two `20261001_*`
++image heads record no cache; replay them with `--features_dir` and `--reference_metrics`, docs/checkpoints.md 4.1.) Exceptions:
+ `scripts/compare_feature_caches.py` takes the two paths literally, and `notebooks/eda.ipynb` reads
+ only `data/processed/features/`.
+ 
+diff --git a/docs/Image_Cloud_Assets.csv b/docs/Image_Cloud_Assets.csv
+index 1003f60..6073d70 100644
+--- a/docs/Image_Cloud_Assets.csv
++++ b/docs/Image_Cloud_Assets.csv
+@@ -1,4 +1,4 @@
+ filename,size_bytes,size_mib,sha256,download_url,status,extract_from,creates_directory,purpose
+ Image_Baseline_Full_Audit_51c6dbd.zip,16408026,15.648,865b0d724fad6b31790af22322deea2be3cc36d423815282257fda703d827823,,Prepared locally; upload pending,Repository root,external/image_audit/image-baseline-51c6dbd/,Complete historical audit and duplicated evidence
+ Image_Features_CLIP_ViTB32_20261006.zip,17939572,17.109,7a02d46bab9e7bd4d15b5ebb6884d2805d94cb5e03c0170c75a056e0588e5662,,Prepared locally; upload pending,data/processed (from the repository root),data/processed/features/20261006_code_fixes_validation_v2/,Complete train/validation CLIP pooler_output cache
+-Image_Baseline_Clean_Verification_20261009.zip,557951,0.532,4a1a93ff2d2c37b2819637f8f99c2f862d2d55400bf0eacd83e22aebeb20ec63,,Prepared locally; upload pending,Repository root,external/image_validation/20261009/,Fresh clean-branch test logs and reproduction evidence
++Image_Baseline_Clean_Verification_20261009.zip,557951,0.532,4a1a93ff2d2c37b2819637f8f99c2f862d2d55400bf0eacd83e22aebeb20ec63,,Prepared locally; upload pending,Repository root,external/image_validation/20261009/,Fresh test logs and reproduction evidence from the image group's clean branch (original team repository)
+diff --git a/docs/Multimodal_Assets.md b/docs/Multimodal_Assets.md
+index f83fb50..5f87e81 100644
+--- a/docs/Multimodal_Assets.md
++++ b/docs/Multimodal_Assets.md
+@@ -70,9 +70,9 @@ python -m src.models.trainer --config configs/train/multimodal_baseline.yaml --r
+ ```
+ 
+ Write re-evaluations inside the run folder (as above), not directly under `outputs/multimodal/`:
+-`scripts/summarize_multimodal_runs.py` counts any folder there with a `metrics_validation.json` as a run.
++`scripts/summarize_multimodal_runs.py` counts any folder there with a `metrics_validation.json` as a run (unless its name contains reproduction or rerun).
+ 
+-重新评估请写到实验目录内部（如上），不要直接放在 `outputs/multimodal/` 下：`scripts/summarize_multimodal_runs.py` 会把那里含 `metrics_validation.json` 的目录都当作一次实验。
++重新评估请写到实验目录内部（如上），不要直接放在 `outputs/multimodal/` 下：`scripts/summarize_multimodal_runs.py` 会把那里含 `metrics_validation.json` 的目录（名称含 reproduction 或 rerun 的除外）都当作一次实验。
+ 
+ The cache loaders check every file's SHA-256, sample IDs, order and labels against the dataset
+ metadata before use.
+diff --git a/docs/Multimodal_Test_Results.md b/docs/Multimodal_Test_Results.md
+index 2c9af7a..691273a 100644
+--- a/docs/Multimodal_Test_Results.md
++++ b/docs/Multimodal_Test_Results.md
+@@ -69,7 +69,7 @@ the documented commands were run as written (4-vCPU CPU machine, local encoder c
+ | Git hygiene / Git 检查 | after every command below, `git add -A --dry-run` lists exactly the 168 files of the repository zip |
+ | Unit tests / 单元测试 | 57 tests: 56 passed, 1 skipped (PowerShell not installed); `tests/test_data_loader.py` 27, `test_model.py` 12, `test_serving.py` 18 |
+ | Replays / 重放 | `evaluate.py` MATCH with difference 0 for the main run, `_reproduction_cpu` (from the shipped caches), seed-43 baseline and ablations, two diagnostic heads and the final image head; the two `20261001_*` image heads 0.529162 / 0.527606 with `--features_dir` and `--reference_metrics` |
+-| Retraining / 重新训练 | `20261016_distilbert_clip_seed42` retrained from the caches: predictions and training log byte-identical, weights equal, epoch 25; `scripts/train.sh` examples equal the shipped heads |
++| Retraining / 重新训练 | `20261016_distilbert_clip_seed42` retrained from the caches: predictions and training log byte-identical, weights equal, epoch 25; `scripts/train.sh` multimodal examples byte-identical to the shipped heads; the image example selects the same epoch with the same metrics and labels (probabilities within 3e-7; the shipped image head was trained on CUDA) |
+ | End-to-end / 端到端 | `_reproduction_cpu` 6.4e-7 (pass); main head 0.0131 > 0.01 (fails as documented, D19); reports byte-identical to the shipped ones |
+ | Results report / 结果报告 | `python -m src.evaluation.results_report` rewrites `Team_Review/multimodal/report/` byte-identically |
+ | Live API / 在线接口 | `/health`, `/model`, `/predict` (`data/samples/predict_request.json` → 0.7638478875160217), `/predict/batch`, 400 / 413 / 422 cases |
+diff --git a/docs/api_spec.md b/docs/api_spec.md
+index 35894b8..809cdef 100644
+--- a/docs/api_spec.md
++++ b/docs/api_spec.md
+@@ -78,7 +78,8 @@ Model card of the loaded head.
+ }
+ ```
+ 
+-(`text_model` / `clip_model` show `local_dir:<folder name>` instead when `*_model_dir` is set.)
++(`text_model` / `clip_model` show `local_dir:<folder name>` instead when `*_model_dir` is set; `checkpoint`
++echoes the configured path, so prefer a repository-relative `CHECKPOINT`.)
+ 
+ ### `POST /predict`
+ 
+diff --git a/docs/checkpoints.md b/docs/checkpoints.md
+index 55da0f7..8a8db97 100644
+--- a/docs/checkpoints.md
++++ b/docs/checkpoints.md
+@@ -70,7 +70,7 @@ outputs/<task>/<run_id>/                  # 实验记录
+ 
+ ### 4.1 图片组（3 个）
+ 
+-3 个线性头使用相同的冻结 CLIP 特征。在最终缓存 `20261006_code_fixes_validation_v2` 上重放：原始基线 0.529162，Zhihan 复现 0.527606，最终参考 0.527606（[Image_Test_Results.md](Image_Test_Results.md)）。**注意**：图片组仓库中 `20261001_clip_vitb32_seed42_zhihan_rtx3080/best.pt` 与 `20261006_code_fixes_validation_v2/best.pt` 是逐字节相同的同一个文件（SHA-256 相同），这里按原样保留两个路径。两个 `20261001_*` 分类头没有实验目录（`outputs/image/20261001_*` 不存在），它们也没有记录特征目录，用 `evaluate.py` 重放时需同时指定特征缓存和参考指标文件：`python -m src.evaluation.evaluate --run_id 20261001_clip_vitb32_seed42 --features_dir data/processed/features/20261006_code_fixes_validation_v2 --reference_metrics outputs/image/20261006_code_fixes_validation_v2/metrics_validation.json --out_dir outputs/image/replay_20261001`（Zhihan 的分类头同理），或直接与上面的数值比较。
++3 个线性头使用相同的冻结 CLIP 特征。在最终缓存 `20261006_code_fixes_validation_v2` 上重放：原始基线 0.529162，Zhihan 复现 0.527606，最终参考 0.527606（[Image_Test_Results.md](Image_Test_Results.md)）。**注意**：图片组仓库中 `20261001_clip_vitb32_seed42_zhihan_rtx3080/best.pt` 与 `20261006_code_fixes_validation_v2/best.pt` 是逐字节相同的同一个文件（SHA-256 相同），这里按原样保留两个路径。两个 `20261001_*` 分类头没有实验目录（`outputs/image/20261001_*` 不存在），它们也没有记录特征目录，用 `evaluate.py` 重放时需同时指定特征缓存和参考指标文件：`python -m src.evaluation.evaluate --run_id 20261001_clip_vitb32_seed42 --features_dir data/processed/features/20261006_code_fixes_validation_v2 --reference_metrics outputs/image/20261006_code_fixes_validation_v2/metrics_validation.json --out_dir outputs/image/replay_20261001`（Zhihan 的分类头同理，另换 `--out_dir`，如 `outputs/image/replay_20261001_zhihan`），或直接与上面的数值比较。
+ 
+ | 标注 | run_id | seed | epoch | 验证 Macro-F1 | 分类头 | SHA-256 |
+ |---|---|---|---|---|---|---|
+diff --git a/docs/multimodal_baseline.md b/docs/multimodal_baseline.md
+index ce535d6..0c29dd4 100644
+--- a/docs/multimodal_baseline.md
++++ b/docs/multimodal_baseline.md
+@@ -58,8 +58,8 @@ python -m src.features.feature_engineering image --splits train validation test
+ # 3. train the fusion MLP (README 6 outputs + checkpoints/multimodal/<run_id>/best.pt);
+ #    feature dirs come from the config's `features:` block
+ #    (the recorded run is 20261016_distilbert_clip_seed42; choose a new run_id, existing runs are never overwritten)
+-python -m src.models.trainer --config configs/train/multimodal_baseline.yaml --run_id 20261016_distilbert_clip_seed42_mine
+-python -m scripts.verify_predictions outputs/multimodal/20261016_distilbert_clip_seed42_mine/predictions_validation.csv
++python -m src.models.trainer --config configs/train/multimodal_baseline.yaml --run_id my_distilbert_clip_seed42
++python -m scripts.verify_predictions outputs/multimodal/my_distilbert_clip_seed42/predictions_validation.csv
+ 
+ # 4. reload the saved head (compares with the reported metrics, tolerance 0.01); = bash scripts/eval.sh <run_id>
+ #    the shipped reference runs already have reeval/ and checks/, so give them a new output path
+@@ -86,9 +86,11 @@ python -m src.evaluation.review_samples --run_id 20261016_distilbert_clip_seed42
+     --out_dir outputs/multimodal/20261016_distilbert_clip_seed42/review_mine
+ 
+ # 8. ablations and extra seeds (supplementary, validation only)
+-python -m src.models.trainer --config configs/train/multimodal_text_only.yaml   # also _image_only, _mean_pooling
+-python -m src.models.trainer --config configs/train/multimodal_baseline.yaml --seed 43
+-python -m scripts.summarize_multimodal_runs --pattern '20261016_*'   # without the pattern it also lists the 42 sweep runs
++#    (give your runs a prefix of your own, e.g. my_; the recorded runs start with 20261016_ and 20261018_overfit_)
++python -m src.models.trainer --config configs/train/multimodal_text_only.yaml --run_id my_text_only_seed42   # also _image_only, _mean_pooling
++python -m src.models.trainer --config configs/train/multimodal_baseline.yaml --seed 43 --run_id my_distilbert_clip_seed43
++python -m scripts.summarize_multimodal_runs --pattern 'my_*'        # your runs
++python -m scripts.summarize_multimodal_runs --pattern '20261016_*'  # the recorded 2026-10-16 runs (Team_Review/multimodal/validation_runs.csv)
+ 
+ # 9. statistics and figures for the results report (validation only)
+ python -m src.evaluation.results_report
+diff --git a/scripts/summarize_multimodal_runs.py b/scripts/summarize_multimodal_runs.py
+index 4cee6a5..966ef39 100644
+--- a/scripts/summarize_multimodal_runs.py
++++ b/scripts/summarize_multimodal_runs.py
+@@ -1,17 +1,24 @@
+ """Collect validation metrics of multimodal runs into one table (per seed and mean +/- std).
+ 
+-    python -m scripts.summarize_multimodal_runs --pattern '20261016_*' --out Team_Review/multimodal/validation_runs.csv
+-    (the pattern keeps the 2026-10-16 runs of the committed table; '*' also lists the 20261018_overfit_* sweep)
++    python -m scripts.summarize_multimodal_runs --pattern '20261016_*' --out outputs/validation_runs_mine.csv
++    cmp outputs/validation_runs_mine.csv Team_Review/multimodal/validation_runs.csv
++    (the pattern keeps the 2026-10-16 runs of the committed table; '*' also lists the 20261018_overfit_* sweep;
++    --out never overwrites an existing file)
+ 
+ Reads outputs/multimodal/<run_id>/metrics_validation.json for every run whose id matches
+ --pattern; reproduction/rerun folders are skipped unless --include_reproductions is given.
+ """
+ import argparse
+ import json
++import sys
+ from pathlib import Path
+ 
+ import pandas as pd
+ 
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++
++from src.utils.safety import require_new_paths  # noqa: E402
++
+ KEYS = ["macro_f1", "accuracy", "f1_0", "f1_1", "best_epoch", "training_seconds"]
+ 
+ 
+@@ -35,6 +42,7 @@ def main():
+         raise SystemExit("no runs found")
+     df = pd.DataFrame(rows).sort_values(["model_name", "seed"])
+     if args.out:
++        require_new_paths(Path(args.out))
+         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+         df.to_csv(args.out, index=False)
+ 
+diff --git a/src/serving/predictor.py b/src/serving/predictor.py
+index 5763cf3..700d009 100644
+--- a/src/serving/predictor.py
++++ b/src/serving/predictor.py
+@@ -74,7 +74,7 @@ class MultimodalPredictor:
+             "trained_head": self.trained,
+             "threshold": self.threshold,
+             "labels": {str(k): v for k, v in LABEL_NAMES.items()},
+-            # local copies are shown by folder name only, so /model does not reveal machine paths
++            # local encoder copies are shown by folder name only (the checkpoint path is echoed as configured)
+             "text_model": (f"local_dir:{Path(text_model_dir).name}" if text_model_dir
+                            else f"{config['text_model_id']}@{config['text_revision']}"),
+             "text_feature": config["text_feature"],
+-- 
+2.43.0
+

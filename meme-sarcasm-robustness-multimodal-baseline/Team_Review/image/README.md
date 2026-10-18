@@ -35,6 +35,6 @@ Match samples by `sample_id`. Each green square shows the approximate center cro
 
 使用 `sample_id` 对照样本。每张梗图的绿框分别表示近似中心裁剪范围，框外像素被裁掉，框内文字仍可能被编码器看到。人工表中的裁剪原因属于待验证假设，不代表已证明的因果关系；建议的后续实验并非全部已做。[处理器记录](images/processor_evidence.json)说明预处理细节。
 
-Historical full logs, Excel copies, duplicate grids, earlier results, and audit snapshots are preserved in `image-baseline` and the [external audit archive](../../docs/Image_Cloud_Assets.md). They are not needed for the quick review above.
+Historical full logs, Excel copies, duplicate grids, earlier results, and audit snapshots are preserved in the original team repository's `image-baseline` branch and the [external audit archive](../../docs/Image_Cloud_Assets.md). They are not needed for the quick review above.
 
-完整历史日志、Excel 副本、重复图集、早期结果和审计快照保留在 `image-baseline` 及[外部完整审计包](../../docs/Image_Cloud_Assets.md)中；快速审查只需本页资料。
+完整历史日志、Excel 副本、重复图集、早期结果和审计快照保留在原团队仓库的 `image-baseline` 分支及[外部完整审计包](../../docs/Image_Cloud_Assets.md)中；快速审查只需本页资料。

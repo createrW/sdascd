@@ -1,3 +1,6 @@
+# Shell scripts and the Dockerfile must keep LF endings, also on Windows checkouts (core.autocrlf).
+*.sh text eol=lf
+Dockerfile text eol=lf
 # Keep curated evidence bytes stable on Windows and other platforms.
 Team_Review/image/manual_review/*.csv -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 Team_Review/image/images/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

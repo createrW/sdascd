@@ -90,12 +90,12 @@ This answers the proposal's question for the frozen baseline: its "multimodal" s
 - The encoders here were local copies of the pinned weights, because Hugging Face was blocked. On a machine with Hub access, re-running `python -m src.features.feature_engineering text` and comparing with `scripts/compare_feature_caches.py` will confirm the DistilBERT copy (expected max diff ≈ 0).
 - Test is not scored. For the final evaluation use `data/processed/features/clip_vitb32_pooler_cpu`, because the image group cache has no test split.
 - The image group's CUDA cache uses TF32 (see the test report). The 0.01 Macro-F1 tolerance absorbs it, but probability-level checks against that cache are looser than float precision.
-- Validation is small and noisy. Report the 3-seed mean plus paired bootstrap and label-permutation tests for comparisons. Validation loss is lowest at epoch 1 in every image-based run, so it cannot be used for early stopping. A lower learning rate or stronger regularization, with a fixed epoch budget or a smoothed Macro-F1 criterion, is post-Oct 14 work (a team decision if it replaces D10).
-- Checkpoints and caches are not in Git. They are in `Multimodal_Assets_20261016.zip` and `Text_Features_DistilBERT_20261016.zip` ([asset list](../../docs/Multimodal_Assets.md)).
+- Validation is small and noisy. Report the 3-seed mean plus paired bootstrap and label-permutation tests for comparisons. Validation loss is lowest at epoch 1 in every 2026-10-16 image-based run (within the first 5 epochs in the overfitting sweep), so it cannot be used for early stopping. A lower learning rate, dropout 0.5 and weight decay 1e-2 were tested in the overfitting sweep (point 5); a fixed epoch budget or a smoothed Macro-F1 criterion, and text-specific regularization, are post-Oct 14 work (a team decision if it replaces D10).
+- Checkpoints and caches are not in Git. They are in `Checkpoints_merged_20261018_v2.zip`, `Feature_Caches_merged_20261018_v2.zip` and `Run_Outputs_20261018_v2.zip` ([asset list](../../docs/Multimodal_Assets.md), [checkpoint guide](../../docs/checkpoints.md)).
 
 - 组员仍需完成人工的"第二名成员复现"；本次重跑由同一 agent 使用重新提取（逐位相同）的文字特征和 CPU 图片特征完成。
 - 由于无法访问 Hugging Face，本次编码器使用固定权重的本地副本；在能访问 Hub 的机器上重新运行 `python -m src.features.feature_engineering text` 并用 `scripts/compare_feature_caches.py` 比较，即可确认 DistilBERT 副本（预期最大差异 ≈ 0）。
 - Test 未评分；最终评估需使用 `data/processed/features/clip_vitb32_pooler_cpu`，因为图片组缓存不含 test。
 - 图片组 CUDA 缓存使用了 TF32（见检测报告）；0.01 的 Macro-F1 容差可以吸收，但针对该缓存的概率级检查达不到浮点精度。
-- Validation 规模小、噪声大，比较时请用 3 个 seed 的均值，并配合配对 bootstrap 与标签置换检验。所有使用图像的实验中 validation loss 都在第 1 个 epoch 最低，不能用来早停。降低学习率或加强正则化，并改用固定 epoch 数或平滑后的 Macro-F1 准则，属于10月14日之后的工作（若替代 D10，需团队决定）。
-- Checkpoint 和缓存不在 Git 中，见 `Multimodal_Assets_20261016.zip` 和 `Text_Features_DistilBERT_20261016.zip`（[资料清单](../../docs/Multimodal_Assets.md)）。
+- Validation 规模小、噪声大，比较时请用 3 个 seed 的均值，并配合配对 bootstrap 与标签置换检验。2026-10-16 所有使用图像的实验中 validation loss 都在第 1 个 epoch 最低（过拟合扫描中都在前 5 个 epoch 内），不能用来早停。更低的学习率、dropout 0.5 与 weight decay 1e-2 已在过拟合扫描中测试（第 5 点）；改用固定 epoch 数或平滑后的 Macro-F1 准则，以及针对文字分支的正则化，属于10月14日之后的工作（若替代 D10，需团队决定）。
+- Checkpoint 和缓存不在 Git 中，见 `Checkpoints_merged_20261018_v2.zip`、`Feature_Caches_merged_20261018_v2.zip` 和 `Run_Outputs_20261018_v2.zip`（[资料清单](../../docs/Multimodal_Assets.md)、[checkpoint 说明](../../docs/checkpoints.md)）。

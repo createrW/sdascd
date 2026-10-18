@@ -45,6 +45,7 @@ datasets/
 *.pth
 *.ckpt
 *.safetensors
+*.bin
 *.npy
 
 # Checkpoints stay local by default. The image group's tiny linear-head
@@ -81,7 +82,7 @@ outputs/image/20261006_code_fixes_validation_v2/*
 external/
 
 # Multimodal reference runs (main + rerun on CPU image features). Other runs, checkpoints, caches
-# and step logs are in Multimodal_Assets_20261016.zip (docs/Multimodal_Assets.md).
+# and step logs are in the asset archives (docs/Multimodal_Assets.md).
 logs/
 # Only the listed files are versioned; new folders written into these runs (e.g. a re-evaluation
 # or error_analysis/ with dataset images) stay local.

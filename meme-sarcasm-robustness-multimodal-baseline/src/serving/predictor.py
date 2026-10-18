@@ -74,10 +74,13 @@ class MultimodalPredictor:
             "trained_head": self.trained,
             "threshold": self.threshold,
             "labels": {str(k): v for k, v in LABEL_NAMES.items()},
-            "text_model": text_model_dir or f"{config['text_model_id']}@{config['text_revision']}",
+            # local encoder copies are shown by folder name only (the checkpoint path is echoed as configured)
+            "text_model": (f"local_dir:{Path(text_model_dir).name}" if text_model_dir
+                           else f"{config['text_model_id']}@{config['text_revision']}"),
             "text_feature": config["text_feature"],
             "text_max_length": config["text_max_length"],
-            "clip_model": clip_model_dir or f"{config['clip_model_id']}@{config['clip_revision']}",
+            "clip_model": (f"local_dir:{Path(clip_model_dir).name}" if clip_model_dir
+                           else f"{config['clip_model_id']}@{config['clip_revision']}"),
             "image_feature": config["image_feature"],
             "device": str(self.device),
             **(info or {}),
@@ -88,8 +91,8 @@ class MultimodalPredictor:
         """Load checkpoints/multimodal/<run_id>/best.pt (config + fusion head weights)."""
         if not Path(checkpoint).is_file():
             raise FileNotFoundError(
-                f"{checkpoint} not found. The reference heads are in Multimodal_Assets_20261016.zip "
-                "(docs/Multimodal_Assets.md); to serve your own run pass --checkpoint "
+                f"{checkpoint} not found. The reference heads are in Checkpoints_merged_20261018_v2.zip "
+                "(docs/Multimodal_Assets.md, docs/checkpoints.md); to serve your own run pass --checkpoint "
                 "checkpoints/multimodal/<run_id>/best.pt or set `checkpoint:` in the serving config.")
         ckpt = torch.load(checkpoint, map_location="cpu", weights_only=True)
         info = {"checkpoint": str(checkpoint), "checkpoint_epoch": ckpt["epoch"],

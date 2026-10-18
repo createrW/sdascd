@@ -1,7 +1,7 @@
 From 74a13a42fbda4e5e2485f387db9a8f06db19bed6 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Sat, 17 Oct 2026 23:41:21 +0000
-Subject: [PATCH 2/4] Restructure to the team code convention; add serving,
+Subject: [PATCH 2/8] Restructure to the team code convention; add serving,
  notebooks, packaging
 
 Layout: configs/{train,deploy}/*.yaml, data/{raw,processed,samples},

@@ -16,7 +16,7 @@ decision log is [decisions.md](decisions.md); run history is [experiment_log.md]
 | Goal | One code path from cached features (training) to raw inputs (serving), checked numerically. |
 | Goal | Everything runs on CPU; GPU is optional (feature extraction is the only expensive step). |
 | Non-goal | Fine-tuning the encoders, tuning the threshold, or choosing anything on Test (team README 3.2). |
-| Non-goal | The Text Group's fine-tuned DistilBERT classifier (separate branch). |
+| Non-goal | The Text Group's fine-tuned DistilBERT classifier (maintained separately by the Text Group). |
 
 ## 2. Data contract / 数据约定
 

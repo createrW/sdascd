@@ -1,5 +1,5 @@
 {
-  "clip_source": "/home/user/models/hf_local/clip-vit-base-patch32",
+  "clip_source": "local_dir:clip-vit-base-patch32",
   "groups": {
     "validation_worst10": {
       "n": 10,

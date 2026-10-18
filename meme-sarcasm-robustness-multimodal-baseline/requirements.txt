@@ -21,6 +21,7 @@ pyyaml>=6.0
 # serving (src/serving/app.py)
 fastapi>=0.110
 uvicorn>=0.29
+pydantic>=2
 
 # tests (FastAPI TestClient) and notebook kernel; to open the notebooks:
 #   pip install jupyterlab && jupyter lab notebooks/      (they need MEMOTION_DATA_DIR and the caches)

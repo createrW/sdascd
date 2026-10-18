@@ -21,8 +21,8 @@ SERVING_CONFIG=my_serving.yaml PORT=9000 bash scripts/serve.sh
 uvicorn src.serving.app:create_app --factory --host 0.0.0.0 --port 8000
 ```
 
-The default checkpoint is not in Git: it comes from `Multimodal_Assets_20261016.zip`
-([Multimodal_Assets.md](Multimodal_Assets.md)), or point `CHECKPOINT` at a head you trained.
+The default checkpoint is not in Git: it comes from `Checkpoints_merged_20261018_v2.zip`
+([checkpoints.md](checkpoints.md)), or point `CHECKPOINT` at a head you trained.
 
 `configs/deploy/serving.yaml`:
 
@@ -78,7 +78,8 @@ Model card of the loaded head.
 }
 ```
 
-(`text_model` / `clip_model` show the local folder instead when `*_model_dir` is set.)
+(`text_model` / `clip_model` show `local_dir:<folder name>` instead when `*_model_dir` is set; `checkpoint`
+echoes the configured path, so prefer a repository-relative `CHECKPOINT`.)
 
 ### `POST /predict`
 

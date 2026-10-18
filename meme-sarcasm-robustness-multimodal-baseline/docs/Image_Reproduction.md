@@ -12,19 +12,21 @@ Reference run: `20261006_code_fixes_validation_v2`. Train: 5,593; Validation: 69
 
 Files / 文件：[reference outputs](../outputs/image/20261006_code_fixes_validation_v2/), [configuration](../configs/train/image_baseline.yaml), [final head](../checkpoints/image/20261006_code_fixes_validation_v2/best.pt).
 
-The three retained `best.pt` files contain only small classifier heads: the original team baseline (`20261001_clip_vitb32_seed42`), Zhihan's earlier independent reproduction (`20261001_clip_vitb32_seed42_zhihan_rtx3080`), and the final reference run. They use the same frozen CLIP features. Historical results are in the external audit archive, not duplicated here.
+The three retained `best.pt` files contain only small classifier heads: the original team baseline (`20261001_clip_vitb32_seed42`), Zhihan's earlier independent reproduction (`20261001_clip_vitb32_seed42_zhihan_rtx3080`), and the final reference run. They use the same frozen CLIP features. Zhihan's file is byte-identical to the final reference head (same SHA-256, as received from the image group), so the two paths hold one head. Historical results are in the external audit archive, not duplicated here.
 
-保留的三个 `best.pt` 都只包含小型分类头，分别来自原始团队基线、Zhihan 的较早独立复现和最终参考实验。它们使用相同的冻结 CLIP 特征；历史结果在外部完整审计包中，此处不重复保存。
+保留的三个 `best.pt` 都只包含小型分类头，分别来自原始团队基线、Zhihan 的较早独立复现和最终参考实验。它们使用相同的冻结 CLIP 特征；其中 Zhihan 的文件与最终参考分类头逐字节相同（SHA-256 相同，图片组提供时即如此），两个路径是同一个分类头。历史结果在外部完整审计包中，此处不重复保存。
 
 ## A. Downloaded cache / 下载缓存快速复现
 
-Download `Image_Features_CLIP_ViTB32_20261006.zip` from the [cloud manifest](Image_Cloud_Assets.md) once its real link is available. Check its size and SHA-256, then extract into `data/processed/`. It creates `data/processed/features/20261006_code_fixes_validation_v2/` with `train.pt`, `validation.pt`, and `meta.json`. The tensors contain 768-dimensional features, sample IDs, and labels; metadata and data alignment are checked before use. The original metadata for all three splits is still required for validation; this route does not read dataset image files. This route needs no encoder download or feature extraction.
+Get the cache from `Feature_Caches_merged_20261018_v2.zip` ([Multimodal_Assets.md](Multimodal_Assets.md); `unzip -n` at the repository root), or download `Image_Features_CLIP_ViTB32_20261006.zip` from the [cloud manifest](Image_Cloud_Assets.md) once its link is available, check its size and SHA-256 and extract it into `data/processed/`. It creates `data/processed/features/20261006_code_fixes_validation_v2/` with `train.pt`, `validation.pt`, and `meta.json`. The tensors contain 768-dimensional features, sample IDs, and labels; metadata and data alignment are checked before use. The original metadata for all three splits is still required for validation; this route does not read dataset image files. This route needs no encoder download or feature extraction.
 
-待[云端清单](Image_Cloud_Assets.md)提供实际链接后，下载 `Image_Features_CLIP_ViTB32_20261006.zip`，核对大小和 SHA-256，解压到 `data/processed/`。将生成 `data/processed/features/20261006_code_fixes_validation_v2/`，包含 `train.pt`、`validation.pt`、`meta.json`。缓存包含 768 维特征、sample ID 和标签，使用前会检查元数据及样本一致性。仍需原始三个划分的元数据；此方式不读取数据集图片、不下载编码器、不重新提取特征。
+从 `Feature_Caches_merged_20261018_v2.zip` 获取缓存（见 [Multimodal_Assets.md](Multimodal_Assets.md)，在仓库根目录 `unzip -n`）；或待[云端清单](Image_Cloud_Assets.md)提供链接后下载 `Image_Features_CLIP_ViTB32_20261006.zip`，核对大小和 SHA-256，解压到 `data/processed/`。将生成 `data/processed/features/20261006_code_fixes_validation_v2/`，包含 `train.pt`、`validation.pt`、`meta.json`。缓存包含 768 维特征、sample ID 和标签，使用前会检查元数据及样本一致性。仍需原始三个划分的元数据；此方式不读取数据集图片、不下载编码器、不重新提取特征。
 
 ```powershell
-Get-FileHash 'D:\Downloads\Image_Features_CLIP_ViTB32_20261006.zip' -Algorithm SHA256
-Expand-Archive -LiteralPath 'D:\Downloads\Image_Features_CLIP_ViTB32_20261006.zip' -DestinationPath data/processed
+Get-FileHash 'D:\Downloads\Feature_Caches_merged_20261018_v2.zip' -Algorithm SHA256   # compare with docs/Multimodal_Assets.md
+Expand-Archive -LiteralPath 'D:\Downloads\Feature_Caches_merged_20261018_v2.zip' -DestinationPath .   # creates data/processed/features/...
+# alternative, once the image archive is uploaded:
+# Expand-Archive -LiteralPath 'D:\Downloads\Image_Features_CLIP_ViTB32_20261006.zip' -DestinationPath data/processed
 python -m src.evaluation.evaluate --run_id 20261006_code_fixes_validation_v2 --features_dir data/processed/features/20261006_code_fixes_validation_v2 --out_dir outputs/image/quick_checkpoint_check
 python -m scripts.verify_predictions outputs/image/quick_checkpoint_check/predictions_validation.csv
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/reproduce_image.ps1 -RunId my_cached_reproduction_01 -FeaturesDir data/processed/features/20261006_code_fixes_validation_v2
@@ -65,6 +67,6 @@ python -m unittest discover -s tests -v
 python -m pip check
 ```
 
-The suite checks overwrite protection, cache completeness and alignment, failure propagation, and CSV precision at threshold boundaries. See [current verification results](Image_Test_Results.md) for the clean-branch runs. Neither reproduction route scores Test.
+The suite checks overwrite protection, cache completeness and alignment, failure propagation, and CSV precision at threshold boundaries. See [current verification results](Image_Test_Results.md) for the image group's clean-branch runs (original team repository). Neither reproduction route scores Test.
 
-测试覆盖覆盖保护、缓存完整性与样本对齐、失败状态传递和阈值附近的 CSV 精度。精简分支的实际运行见[检测结果](Image_Test_Results.md)。两种复现方式都不评分 Test。
+测试覆盖覆盖保护、缓存完整性与样本对齐、失败状态传递和阈值附近的 CSV 精度。图片组精简分支（原团队仓库）的实际运行见[检测结果](Image_Test_Results.md)。两种复现方式都不评分 Test。

@@ -10,7 +10,8 @@ validation every epoch, and the best epoch by validation Macro-F1 is kept (READM
 Extract the features first (src/features/feature_engineering.py, or unpack the cache zips into
 data/processed/). Then, from the repo root (or with scripts/train.sh):
     python -m src.models.trainer --config configs/train/multimodal_baseline.yaml
-    python -m src.models.trainer --config configs/train/image_baseline.yaml --run_id 20261005_clip_vitb32_seed42
+    python -m src.models.trainer --config configs/train/image_baseline.yaml --run_id 20261005_clip_vitb32_seed42 \
+        --features_dir data/processed/features/20261006_code_fixes_validation_v2
     python -m src.models.trainer --config configs/train/multimodal_text_only.yaml --seed 43
 
 Writes

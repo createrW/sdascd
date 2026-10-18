@@ -1,0 +1,959 @@
+From e064119bd3f0dc0a4ed2a9d12b49bf32c0a8cf24 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 18 Oct 2026 03:28:02 +0000
+Subject: [PATCH 6/8] Fix findings of the fresh-copy verification of the final
+ package
+
+Assets: the _reproduction_cpu head records reproduction_distilbert_first_token, which no
+archive contained, so its documented evaluate / end-to-end commands failed. The cache archive
+is rebuilt as Feature_Caches_merged_20261018_v2.zip with that cache added (tensors
+byte-identical to distilbert_first_token). Run_Outputs_20261018_v2.zip drops the meme review
+grid (it is in Git) and shortens machine-specific path prefixes in its step logs. The
+diagnostic checkpoint archive gets its own README. docs/Multimodal_Assets.md lists the four
+_v2 archives with sizes and SHA-256 and maps every earlier archive to its replacement.
+
+Docs: say where the archives live and that a public repository must not carry the review
+evidence; scope the regeneration claim to the multimodal files; correct the TF32 emulation
+bound (>= 0.9999999), the overfitting caveat (which heads reach train AUC 0.999), the
+selection-optimism note, two notebook claims, the known-problems list, and the fast-route
+output folder; note that the two 20261001 image heads have no run folder; mark image-group
+branch and commit references as history of the original team repository; explain the
+"team README x.y" citations; fill in the directory guide.
+
+Code and packaging: end_to_end.py and check_tf32_emulation.py record local encoder copies
+by folder name instead of an absolute path (the three committed reports are updated the
+same way); train.sh / trainer.py examples pass the shipped image cache; pydantic>=2 is a
+listed serving dependency; .gitattributes keeps *.sh and the Dockerfile LF; .dockerignore
+covers nested archives, checkpoints and logs; the checkpoint manifest uses LF.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_012mxouBDiknGrGqchsM6QFE
+---
+ .dockerignore                                 |  10 +-
+ .gitattributes                                |   3 +
+ README.md                                     |  26 ++--
+ Team_Review/image/README.md                   |   4 +-
+ Team_Review/multimodal/README.md              |   8 +-
+ Team_Review/multimodal/RESULTS_REPORT.md      |   8 +-
+ .../multimodal/report/tf32_emulation.json     |   2 +-
+ configs/train/image_baseline.yaml             |   3 +-
+ data/README.md                                |   5 +-
+ docs/Image_Cloud_Assets.md                    |  16 +--
+ docs/Image_Reproduction.md                    |   8 +-
+ docs/Image_Test_Results.md                    |   8 +-
+ docs/Multimodal_Assets.md                     |  93 +++++++++-----
+ docs/Multimodal_Test_Results.md               |  10 +-
+ docs/checkpoints.md                           |  31 +++--
+ docs/checkpoints_manifest.csv                 | 120 +++++++++---------
+ docs/design.md                                |   2 +-
+ docs/multimodal_baseline.md                   |   6 +-
+ notebooks/eda.ipynb                           |   6 +-
+ notebooks/poc_model.ipynb                     |   6 +-
+ .../checks/end_to_end_validation.json         |   4 +-
+ .../checks/end_to_end_validation.json         |   4 +-
+ requirements.txt                              |   1 +
+ scripts/check_tf32_emulation.py               |   4 +-
+ scripts/train.sh                              |   3 +-
+ setup.py                                      |   5 +-
+ src/evaluation/end_to_end.py                  |   7 +-
+ src/models/trainer.py                         |   3 +-
+ 28 files changed, 236 insertions(+), 170 deletions(-)
+
+diff --git a/.dockerignore b/.dockerignore
+index 9c8b2b6..911ba1c 100644
+--- a/.dockerignore
++++ b/.dockerignore
+@@ -13,6 +13,10 @@ hf_local
+ external
+ notebooks
+ Team_Review
+-*.zip
+-*.pt
+-*.log
++datasets
++.env*
++wandb
++runs
++**/*.zip
++**/*.pt
++**/*.log
+diff --git a/.gitattributes b/.gitattributes
+index 7273e16..fec3413 100644
+--- a/.gitattributes
++++ b/.gitattributes
+@@ -1,3 +1,6 @@
++# Shell scripts and the Dockerfile must keep LF endings, also on Windows checkouts (core.autocrlf).
++*.sh text eol=lf
++Dockerfile text eol=lf
+ # Keep curated evidence bytes stable on Windows and other platforms.
+ Team_Review/image/manual_review/*.csv -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+ Team_Review/image/images/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+diff --git a/README.md b/README.md
+index ecc1b77..122bf12 100644
+--- a/README.md
++++ b/README.md
+@@ -43,8 +43,8 @@ pip install -r requirements.txt               # optional: pip install -e ".[serv
+ export MEMOTION_DATA_DIR=/path/to/MMSoc_Memotion_exported
+ python -m scripts.verify_dataset              # -> DATASET OK
+ 
+-# 3. features -> data/processed/features/. Fast route: `unzip -n Feature_Caches_merged_20261018.zip` at the
+-#    repository root gives all four caches, and `unzip -n Checkpoints_merged_20261018_v2.zip` the trained
++# 3. features -> data/processed/features/. Fast route: `unzip -n Feature_Caches_merged_20261018_v2.zip` at the
++#    repository root gives all five caches, and `unzip -n Checkpoints_merged_20261018_v2.zip` the trained
+ #    heads (docs/Multimodal_Assets.md, docs/checkpoints.md). Or extract them yourself:
+ bash scripts/extract_features.sh text         # DistilBERT [CLS] + mean pooling, ~1.5 min on CPU
+ #    image: the multimodal configs default to the image group's CUDA cache (data/processed/features/20261006_code_fixes_validation_v2,
+@@ -80,18 +80,19 @@ Windows 上直接运行 `.sh` 脚本中对应的 `python -m ...` 命令，并用
+ configs/
+   train/            image_baseline.yaml, multimodal_baseline.yaml, multimodal_{text_only,image_only,mean_pooling}.yaml
+   deploy/           serving.yaml                      inference / API settings
+-data/               (git-ignored except README.md and samples/)  see data/README.md
++data/               (git-ignored except README.md, samples/ and .gitkeep files)  see data/README.md
+   raw/              the exported dataset, read-only
+   processed/        feature caches: features/<name>/{train,validation,test}.pt + meta.json
+   samples/          synthetic 4-row splits + API request bodies (committed)
+-docs/               design.md, experiment_log.md, api_spec.md, decisions.md, image/multimodal guides
++docs/               design.md, experiment_log.md, api_spec.md, decisions.md, checkpoints.md (+ manifest, SHA-256),
++                    Multimodal_Assets.md (asset archives), image/multimodal guides
+ notebooks/          eda.ipynb (data exploration), poc_model.ipynb (model PoC on cached features)
+ src/
+   data/             dataset.py (contract, labels), preprocess.py ([NO_TEXT], RGB, tokenize), loader.py (joint cache loader)
+   features/         feature_engineering.py (CLIP / DistilBERT extraction), cache.py (cache validation)
+   models/           base_model.py, vit_classifier.py (image head), multimodal_classifier.py, trainer.py
+   evaluation/       metrics.py, report.py, evaluate.py, reproduction.py, end_to_end.py,
+-                    error_analysis.py, review_samples.py, results_report.py
++                    error_analysis.py, review_samples.py, results_report.py, overfitting_diagnostic.py
+   serving/          predictor.py (inference wrapper + smoke test), app.py (FastAPI)
+   utils/            config.py (YAML/JSON), reproducibility.py (seeds, device), safety.py (no overwrites)
+ tests/              test_data_loader.py, test_model.py, test_serving.py (+ helpers.py)
+@@ -99,7 +100,7 @@ scripts/            train.sh, eval.sh, serve.sh, extract_features.sh, reproduce_
+ outputs/            run folders (curated reference runs only in Git)
+ checkpoints/        trained heads (only the image group's three small heads in Git)
+ Team_Review/        curated results, manual reviews, the multimodal results report
+-requirements.txt, requirements-lock.txt, setup.py, Dockerfile, .dockerignore, .gitignore
++requirements.txt, requirements-lock.txt, setup.py, Dockerfile, .dockerignore, .gitignore, .gitattributes
+ ```
+ 
+ ## Documents / 文档
+@@ -143,13 +144,13 @@ The code moved from `src/{common,image,text,multimodal}/` to the layout above on
+ 
+ ## Status / 当前状态
+ 
+-Shared dataset validation, the image baseline and the multimodal baseline are complete. The multimodal pipeline has text feature caching, training and evaluation, all run on CPU, plus a same-agent rerun; the teammate's second-member reproduction is still pending. The end-to-end check passes on CPU caches; the main run's CUDA-cache head misses the 0.01 probability tolerance because of TF32 (D19). The manual review is a first pass awaiting a teammate's confirmation. The Text Group's fine-tuned DistilBERT classifier is not part of this branch.
++Shared dataset validation, the image baseline and the multimodal baseline are complete. The multimodal pipeline has text feature caching, training and evaluation, all run on CPU, plus a same-agent rerun; the teammate's second-member reproduction is still pending. The end-to-end check passes on CPU caches; the main run's CUDA-cache head misses the 0.01 probability tolerance because of TF32 (D19). The manual review is a first pass awaiting a teammate's confirmation. The Text Group's fine-tuned DistilBERT classifier is not part of this repository.
+ 
+-共同数据验证、图片基线和多模态基线已完成。多模态流程的文字特征缓存、训练和评估都在 CPU 上完成，另有一次同一 agent 的重跑；组员的第二名成员复现仍待完成。端到端检查在 CPU 缓存上通过；主实验基于 CUDA 缓存的分类头因 TF32 未达到 0.01 的概率容差（D19）。人工核对是初步结果，需要组员确认。文字组微调的 DistilBERT 分类器不在本分支中。
++共同数据验证、图片基线和多模态基线已完成。多模态流程的文字特征缓存、训练和评估都在 CPU 上完成，另有一次同一 agent 的重跑；组员的第二名成员复现仍待完成。端到端检查在 CPU 缓存上通过；主实验基于 CUDA 缓存的分类头因 TF32 未达到 0.01 的概率容差（D19）。人工核对是初步结果，需要组员确认。文字组微调的 DistilBERT 分类器不在本仓库中。
+ 
+-This branch keeps one final image reference run, three small image heads and two multimodal reference runs (`outputs/multimodal/20261016_distilbert_clip_seed42` and its rerun on CPU image features). Datasets, feature tensors, downloaded encoders, other checkpoints and new outputs stay outside Git; the caches, checkpoints and remaining runs are packaged as four zips ([docs/Multimodal_Assets.md](docs/Multimodal_Assets.md); every checkpoint is described in [docs/checkpoints.md](docs/checkpoints.md)).
++This repository keeps one final image reference run, three small image heads and two multimodal reference runs (`outputs/multimodal/20261016_distilbert_clip_seed42` and its rerun on CPU image features). Datasets, feature tensors, downloaded encoders, other checkpoints and new outputs stay outside Git; the caches, checkpoints and remaining runs are packaged as four zips ([docs/Multimodal_Assets.md](docs/Multimodal_Assets.md); every checkpoint is described in [docs/checkpoints.md](docs/checkpoints.md)).
+ 
+-本分支保留一套最终图片 reference run、三个小型图片分类头和两套多模态参考实验。数据集、特征、下载的编码器、其他 checkpoint 和新输出不提交到 Git；特征缓存、checkpoint 和其余实验打包为四个压缩包（见 Multimodal_Assets.md；每个 checkpoint 的说明见 docs/checkpoints.md）。
++本仓库保留一套最终图片 reference run、三个小型图片分类头和两套多模态参考实验。数据集、特征、下载的编码器、其他 checkpoint 和新输出不提交到 Git；特征缓存、checkpoint 和其余实验打包为四个压缩包（见 Multimodal_Assets.md；每个 checkpoint 的说明见 docs/checkpoints.md）。
+ 
+ ## Environment / 环境
+ 
+@@ -171,7 +172,10 @@ For the tested PyTorch wheel an up-to-date NVIDIA driver is enough; no separate
+ * Never commit the dataset or its zip, feature caches, encoder weights, Hugging Face caches or model checkpoints (team README 9.4, `.gitignore`). Deliberate exceptions, kept by the groups for review and reproduction:
+   * dataset-derived review evidence: `Team_Review/image/images/*_review.png` (grids of 32 image-group samples), `Team_Review/image/manual_review/*.csv` (their sample IDs, labels and caption excerpts) and `outputs/multimodal/20261016_distilbert_clip_seed42/review/` (16 validation memes with captions); every `predictions_*.csv` also lists the dataset label of each `sample_id`;
+   * the image group's three 8.6 KB linear heads in `checkpoints/image/`.
+-  Remove the review evidence before making the repository public. New outputs, including `error_analysis/` and re-evaluation folders inside the reference runs, stay git-ignored.
++  Create the GitHub repository as **private**, or remove the review evidence before making it public. New outputs, including `error_analysis/` and re-evaluation folders inside the reference runs, stay git-ignored.
++* "team README x.y" (in docs, configs and code comments also "README x.y") cites a numbered section of the course team's
++  project specification, which is not part of this repository; the decisions taken from it are recorded in
++  [docs/decisions.md](docs/decisions.md).
+ * Validation selects epochs and compares models; Test is scored once, at the end (`--split test`).
+ * Existing run, checkpoint and cache folders are never overwritten: choose a new `--run_id` / output folder.
+ * Record every formal run in [docs/experiment_log.md](docs/experiment_log.md) and team-wide choices in [docs/decisions.md](docs/decisions.md).
+diff --git a/Team_Review/image/README.md b/Team_Review/image/README.md
+index 4a50b1a..a5a59f9 100644
+--- a/Team_Review/image/README.md
++++ b/Team_Review/image/README.md
+@@ -35,6 +35,6 @@ Match samples by `sample_id`. Each green square shows the approximate center cro
+ 
+ 使用 `sample_id` 对照样本。每张梗图的绿框分别表示近似中心裁剪范围，框外像素被裁掉，框内文字仍可能被编码器看到。人工表中的裁剪原因属于待验证假设，不代表已证明的因果关系；建议的后续实验并非全部已做。[处理器记录](images/processor_evidence.json)说明预处理细节。
+ 
+-Historical full logs, Excel copies, duplicate grids, earlier results, and audit snapshots are preserved in `image-baseline` and the [external audit archive](../../docs/Image_Cloud_Assets.md). They are not needed for the quick review above.
++Historical full logs, Excel copies, duplicate grids, earlier results, and audit snapshots are preserved in the original team repository's `image-baseline` branch and the [external audit archive](../../docs/Image_Cloud_Assets.md). They are not needed for the quick review above.
+ 
+-完整历史日志、Excel 副本、重复图集、早期结果和审计快照保留在 `image-baseline` 及[外部完整审计包](../../docs/Image_Cloud_Assets.md)中；快速审查只需本页资料。
++完整历史日志、Excel 副本、重复图集、早期结果和审计快照保留在原团队仓库的 `image-baseline` 分支及[外部完整审计包](../../docs/Image_Cloud_Assets.md)中；快速审查只需本页资料。
+diff --git a/Team_Review/multimodal/README.md b/Team_Review/multimodal/README.md
+index 674730f..0381ad8 100644
+--- a/Team_Review/multimodal/README.md
++++ b/Team_Review/multimodal/README.md
+@@ -90,12 +90,12 @@ This answers the proposal's question for the frozen baseline: its "multimodal" s
+ - The encoders here were local copies of the pinned weights, because Hugging Face was blocked. On a machine with Hub access, re-running `python -m src.features.feature_engineering text` and comparing with `scripts/compare_feature_caches.py` will confirm the DistilBERT copy (expected max diff ≈ 0).
+ - Test is not scored. For the final evaluation use `data/processed/features/clip_vitb32_pooler_cpu`, because the image group cache has no test split.
+ - The image group's CUDA cache uses TF32 (see the test report). The 0.01 Macro-F1 tolerance absorbs it, but probability-level checks against that cache are looser than float precision.
+-- Validation is small and noisy. Report the 3-seed mean plus paired bootstrap and label-permutation tests for comparisons. Validation loss is lowest at epoch 1 in every image-based run, so it cannot be used for early stopping. A lower learning rate or stronger regularization, with a fixed epoch budget or a smoothed Macro-F1 criterion, is post-Oct 14 work (a team decision if it replaces D10).
+-- Checkpoints and caches are not in Git. They are in `Checkpoints_merged_20261018_v2.zip`, `Feature_Caches_merged_20261018.zip` and `Run_Outputs_20261018.zip` ([asset list](../../docs/Multimodal_Assets.md), [checkpoint guide](../../docs/checkpoints.md)).
++- Validation is small and noisy. Report the 3-seed mean plus paired bootstrap and label-permutation tests for comparisons. Validation loss is lowest at epoch 1 in every image-based run, so it cannot be used for early stopping. A lower learning rate, dropout 0.5 and weight decay 1e-2 were tested in the overfitting sweep (point 5); a fixed epoch budget or a smoothed Macro-F1 criterion, and text-specific regularization, are post-Oct 14 work (a team decision if it replaces D10).
++- Checkpoints and caches are not in Git. They are in `Checkpoints_merged_20261018_v2.zip`, `Feature_Caches_merged_20261018_v2.zip` and `Run_Outputs_20261018_v2.zip` ([asset list](../../docs/Multimodal_Assets.md), [checkpoint guide](../../docs/checkpoints.md)).
+ 
+ - 组员仍需完成人工的"第二名成员复现"；本次重跑由同一 agent 使用重新提取（逐位相同）的文字特征和 CPU 图片特征完成。
+ - 由于无法访问 Hugging Face，本次编码器使用固定权重的本地副本；在能访问 Hub 的机器上重新运行 `python -m src.features.feature_engineering text` 并用 `scripts/compare_feature_caches.py` 比较，即可确认 DistilBERT 副本（预期最大差异 ≈ 0）。
+ - Test 未评分；最终评估需使用 `data/processed/features/clip_vitb32_pooler_cpu`，因为图片组缓存不含 test。
+ - 图片组 CUDA 缓存使用了 TF32（见检测报告）；0.01 的 Macro-F1 容差可以吸收，但针对该缓存的概率级检查达不到浮点精度。
+-- Validation 规模小、噪声大，比较时请用 3 个 seed 的均值，并配合配对 bootstrap 与标签置换检验。所有使用图像的实验中 validation loss 都在第 1 个 epoch 最低，不能用来早停。降低学习率或加强正则化，并改用固定 epoch 数或平滑后的 Macro-F1 准则，属于10月14日之后的工作（若替代 D10，需团队决定）。
+-- Checkpoint 和缓存不在 Git 中，见 `Checkpoints_merged_20261018_v2.zip`、`Feature_Caches_merged_20261018.zip` 和 `Run_Outputs_20261018.zip`（[资料清单](../../docs/Multimodal_Assets.md)、[checkpoint 说明](../../docs/checkpoints.md)）。
++- Validation 规模小、噪声大，比较时请用 3 个 seed 的均值，并配合配对 bootstrap 与标签置换检验。所有使用图像的实验中 validation loss 都在第 1 个 epoch 最低，不能用来早停。更低的学习率、dropout 0.5 与 weight decay 1e-2 已在过拟合扫描中测试（第 5 点）；改用固定 epoch 数或平滑后的 Macro-F1 准则，以及针对文字分支的正则化，属于10月14日之后的工作（若替代 D10，需团队决定）。
++- Checkpoint 和缓存不在 Git 中，见 `Checkpoints_merged_20261018_v2.zip`、`Feature_Caches_merged_20261018_v2.zip` 和 `Run_Outputs_20261018_v2.zip`（[资料清单](../../docs/Multimodal_Assets.md)、[checkpoint 说明](../../docs/checkpoints.md)）。
+diff --git a/Team_Review/multimodal/RESULTS_REPORT.md b/Team_Review/multimodal/RESULTS_REPORT.md
+index a89b2c0..c4c123b 100644
+--- a/Team_Review/multimodal/RESULTS_REPORT.md
++++ b/Team_Review/multimodal/RESULTS_REPORT.md
+@@ -43,14 +43,14 @@ Validation split only (699 memes), threshold 0.5. The epoch is chosen by validat
+ - **Image.** Frozen CLIP ViT-B/32 @ `3d74acf`, `pooler_output` (768-d), from the image group's cache.
+ - **Fusion.** Each vector is L2-normalized, the two are concatenated [text | image] (1536-d), then Linear 512 → ReLU → Dropout 0.2 → Linear 2. Image only and text only use the same MLP on one 768-d input.
+ - **Training.** Weighted cross-entropy (w0 = 2.281, w1 = 0.640, train only), AdamW lr 1e-3, weight decay 1e-4, batch 16, 30 epochs, seeds 42/43/44.
+-- **Weight copies.** huggingface.co was blocked in this environment, so local copies were used. DistilBERT came from Hugging Face's legacy S3 files (weights SHA-256 `e60d7161…`). The CPU CLIP cache came from OpenAI's `ViT-B-32.pt`, whose SHA-256 matches OpenAI's URL, converted locally. Neither copy has been compared with a cache extracted from the Hub revision. For CLIP, the CPU cache agrees with the image group's Hub-based CUDA cache once TF32 is emulated (§10). For DistilBERT, that comparison is still to be run (see the README known problems).
++- **Weight copies.** huggingface.co was blocked in this environment, so local copies were used. DistilBERT came from Hugging Face's legacy S3 files (weights SHA-256 `e60d7161…`). The CPU CLIP cache came from OpenAI's `ViT-B-32.pt`, whose SHA-256 matches OpenAI's URL, converted locally. Neither copy has been compared with a cache extracted from the Hub revision. For CLIP, the CPU cache agrees with the image group's Hub-based CUDA cache once TF32 is emulated (§10). For DistilBERT, that comparison is still to be run (see [known problems](README.md#known-problems-and-unfinished-tasks--已知问题与未完成事项)).
+ 
+ - **数据**：`MMSoc_Memotion_exported`，团队固定划分；二分类：`not_sarcastic` = 0，其余 = 1；文字为 `text_input`，除 1 条 train 样本回退到 `text_ocr` 外与 `text_corrected` 相同；空文本 → `[NO_TEXT]`。
+ - **文字**：冻结 `distilbert-base-uncased` @ `1c4513b2…`，最后一层 `[CLS]` 向量（768 维），最长 128 token。这与 HF `DistilBertForSequenceClassification` 分类时用的 token 位置相同。但与该模型和论文的 GLUE 设置不同，这里编码器没有微调，也没有训练过的 pre-classifier 层；DistilBERT 训练时没有 next-sentence prediction，因此冻结的 [CLS] 并不是训练过的句向量。对照组：masked mean pooling。
+ - **图片**：冻结 CLIP ViT-B/32 @ `3d74acf`，`pooler_output`（768 维），来自图片组缓存。
+ - **融合**：分别 L2 归一化后拼接 [文字 | 图片]（1536 维），再经 Linear 512 → ReLU → Dropout 0.2 → Linear 2；纯图像、纯文字使用同一 MLP，输入为单个 768 维向量。
+ - **训练**：加权交叉熵（w0 = 2.281，w1 = 0.640，仅由 Train 计算），AdamW lr 1e-3，weight decay 1e-4，batch 16，30 epochs，seed 42/43/44。
+-- **权重副本**：本环境无法访问 huggingface.co，因此使用本地副本。DistilBERT 来自 Hugging Face 旧版 S3 文件（权重 SHA-256 `e60d7161…`）；CPU CLIP 缓存来自 OpenAI 的 `ViT-B-32.pt`（SHA-256 与 OpenAI 官方 URL 一致），在本地转换。两份副本都还没有与从 Hub revision 提取的缓存对比过。对 CLIP 而言，模拟 TF32 后 CPU 缓存与图片组基于 Hub 的 CUDA 缓存一致（§10）；对 DistilBERT 而言，这一对比仍待完成（见 README 已知问题）。
++- **权重副本**：本环境无法访问 huggingface.co，因此使用本地副本。DistilBERT 来自 Hugging Face 旧版 S3 文件（权重 SHA-256 `e60d7161…`）；CPU CLIP 缓存来自 OpenAI 的 `ViT-B-32.pt`（SHA-256 与 OpenAI 官方 URL 一致），在本地转换。两份副本都还没有与从 Hub revision 提取的缓存对比过。对 CLIP 而言，模拟 TF32 后 CPU 缓存与图片组基于 Hub 的 CUDA 缓存一致（§10）；对 DistilBERT 而言，这一对比仍待完成（见[已知问题](README.md#known-problems-and-unfinished-tasks--已知问题与未完成事项)）。
+ 
+ ## 3. Dataset statistics / 数据统计
+ 
+@@ -231,7 +231,7 @@ The head does read the text: about one prediction in six flips when captions are
+   - For the main run's head, trained on the CUDA image cache, the same check agrees on all 64 labels. It fails the 0.01 probability tolerance (0.0131), because `validation_000550` is a TF32 outlier.
+ - **CPU vs CUDA image features.** They differ because PyTorch uses TF32 for CUDA convolutions by default.
+   - 38 of 6,292 images have cosine below 0.999, and the worst has 1 − cos = 0.0185.
+-  - Emulating TF32 in the patch embedding ([scripts/check_tf32_emulation.py](../../scripts/check_tf32_emulation.py), [tf32_emulation.json](report/tf32_emulation.json)) cuts the mean absolute difference on the first 64 validation images from 1.7e-3 to 2.9e-5. It brings the 10 worst train and 10 worst validation images from cosine 0.981–0.985 to ≥ 0.99999995.
++  - Emulating TF32 in the patch embedding ([scripts/check_tf32_emulation.py](../../scripts/check_tf32_emulation.py), [tf32_emulation.json](report/tf32_emulation.json)) cuts the mean absolute difference on the first 64 validation images from 1.7e-3 to 2.9e-5. It brings the 10 worst train and 10 worst validation images from cosine 0.981–0.985 to ≥ 0.9999999.
+   - The image group's head scores 0.5286 on CPU features, against 0.5276 reported.
+ 
+ - **重载与重跑**：checkpoint 重载与相同输入重跑完全一致。
+@@ -244,7 +244,7 @@ The head does read the text: about one prediction in six flips when captions are
+   - 对主实验在 CUDA 图片缓存上训练的分类头，同一检查 64 个标签全部一致，但概率差 0.0131，超过 0.01 容差（`validation_000550` 是 TF32 离群样本）。
+ - **CPU 与 CUDA 图片特征**：差异来自 PyTorch 在 CUDA 卷积上默认启用的 TF32。
+   - 6,292 张图片中有 38 张余弦低于 0.999，最差的 1 − cos = 0.0185。
+-  - 在 patch embedding 中模拟 TF32（[scripts/check_tf32_emulation.py](../../scripts/check_tf32_emulation.py)，[tf32_emulation.json](report/tf32_emulation.json)）后，前 64 张 validation 图片的平均绝对差从 1.7e-3 降到 2.9e-5；train 与 validation 各自最差的 10 张图片，余弦从 0.981–0.985 提高到 ≥ 0.99999995。
++  - 在 patch embedding 中模拟 TF32（[scripts/check_tf32_emulation.py](../../scripts/check_tf32_emulation.py)，[tf32_emulation.json](report/tf32_emulation.json)）后，前 64 张 validation 图片的平均绝对差从 1.7e-3 降到 2.9e-5；train 与 validation 各自最差的 10 张图片，余弦从 0.981–0.985 提高到 ≥ 0.9999999。
+   - 图片组分类头在 CPU 特征上得到 0.5286，原报告为 0.5276。
+ 
+ ## 11. Conclusions / 结论
+diff --git a/Team_Review/multimodal/report/tf32_emulation.json b/Team_Review/multimodal/report/tf32_emulation.json
+index 49a31d4..23259ed 100644
+--- a/Team_Review/multimodal/report/tf32_emulation.json
++++ b/Team_Review/multimodal/report/tf32_emulation.json
+@@ -1,5 +1,5 @@
+ {
+-  "clip_source": "/home/user/models/hf_local/clip-vit-base-patch32",
++  "clip_source": "local_dir:clip-vit-base-patch32",
+   "groups": {
+     "validation_worst10": {
+       "n": 10,
+diff --git a/configs/train/image_baseline.yaml b/configs/train/image_baseline.yaml
+index 63f0c2a..1673b0c 100644
+--- a/configs/train/image_baseline.yaml
++++ b/configs/train/image_baseline.yaml
+@@ -9,7 +9,8 @@ clip_revision: 3d74acf
+ feature: pooler_output
+ 
+ features:
+-  # written by `python -m src.features.feature_engineering image` (full train/validation run)
++  # written by `python -m src.features.feature_engineering image` (full train/validation run);
++  # with the shipped caches pass --features_dir data/processed/features/20261006_code_fixes_validation_v2
+   image: data/processed/features/clip_vitb32_pooler
+ 
+ head:
+diff --git a/data/README.md b/data/README.md
+index 6c47286..c8a57c1 100644
+--- a/data/README.md
++++ b/data/README.md
+@@ -13,13 +13,13 @@ git-ignored. (Dataset-derived review evidence that the groups keep in Git on pur
+ under "Rules" in the main README.)
+ 
+ **Feature caches.** `python -m src.features.feature_engineering text|image` writes to
+-`data/processed/features/` by default. `Feature_Caches_merged_20261018.zip` (docs/Multimodal_Assets.md) contains
++`data/processed/features/` by default. `Feature_Caches_merged_20261018_v2.zip` (docs/Multimodal_Assets.md) contains
+ `data/processed/features/` and is unpacked **at the repository root**; the image group's
+ `Image_Features_CLIP_ViTB32_20261006.zip` (docs/Image_Cloud_Assets.md) contains a top-level
+ `features/` folder and is unpacked **into `data/processed/`**:
+ 
+ ```
+-unzip -n Feature_Caches_merged_20261018.zip                    # at the repository root: all four caches
++unzip -n Feature_Caches_merged_20261018_v2.zip                 # at the repository root: all five caches
+ unzip -n Image_Features_CLIP_ViTB32_20261006.zip -d data/processed/   # or only the image group's cache
+ ```
+ 
+@@ -37,6 +37,7 @@ only `data/processed/features/`.
+ | `clip_vitb32_pooler_cpu/` | the same, CPU float32 | train, validation, test | multimodal group |
+ | `distilbert_first_token/` | DistilBERT `[CLS]` (`last_hidden_state[:, 0]`) | train, validation, test | multimodal group |
+ | `distilbert_mean_pooling/` | DistilBERT masked mean | train, validation, test | multimodal group |
++| `reproduction_distilbert_first_token/` | re-extraction of `distilbert_first_token/` (byte-identical tensors), recorded by the `_reproduction_cpu` head | train, validation, test | multimodal group |
+ 
+ **Samples.** `samples/synthetic_memotion/` is generated by `python -m scripts.make_synthetic_samples`:
+ invented captions and 64x64 drawings, no dataset content. It lets the loader, the predictor and the
+diff --git a/docs/Image_Cloud_Assets.md b/docs/Image_Cloud_Assets.md
+index d3c3204..2faafc8 100644
+--- a/docs/Image_Cloud_Assets.md
++++ b/docs/Image_Cloud_Assets.md
+@@ -1,12 +1,12 @@
+ # External image assets / 图片外部资料
+ 
+-**Status: prepared locally; not uploaded.** The team plans to use Google Drive, but no destination link has been provided yet. The download URL fields in [Image_Cloud_Assets.csv](Image_Cloud_Assets.csv) are intentionally empty. After upload, add a working file download link for each archive and keep its recorded size and SHA-256 unchanged. The full extraction reproduction route works without these archives.
++**The feature cache is also inside `Feature_Caches_merged_20261018_v2.zip`** (byte-identical; [Multimodal_Assets.md](Multimodal_Assets.md)), which is the simplest source for it. **Status of the archives below: prepared locally; not uploaded.** The team plans to use Google Drive, but no destination link has been provided yet. The download URL fields in [Image_Cloud_Assets.csv](Image_Cloud_Assets.csv) are intentionally empty. After upload, add a working file download link for each archive and keep its recorded size and SHA-256 unchanged. The full extraction reproduction route works without these archives.
+ 
+-**状态：已在本地准备，尚未上传。** 团队计划使用 Google Drive，但尚未提供目标地址。[Image_Cloud_Assets.csv](Image_Cloud_Assets.csv) 的下载地址暂时留空。实际上传后为每个压缩包填写有效文件下载链接，保留记录的大小与 SHA-256。完整特征提取复现不依赖这些压缩包。
++**特征缓存也在 `Feature_Caches_merged_20261018_v2.zip` 中**（逐字节相同；见 [Multimodal_Assets.md](Multimodal_Assets.md)），这是获取它最简单的途径。**下列压缩包状态：已在本地准备，尚未上传。** 团队计划使用 Google Drive，但尚未提供目标地址。[Image_Cloud_Assets.csv](Image_Cloud_Assets.csv) 的下载地址暂时留空。实际上传后为每个压缩包填写有效文件下载链接，保留记录的大小与 SHA-256。完整特征提取复现不依赖这些压缩包。
+ 
+-All archives already contain the destination folders listed below. Extract feature archives (top-level `features/`) **into `data/processed/`**, and the others **from the repository root**. Do not select the listed inner folder as the extraction root. Archives contain no dataset images or downloaded encoder weights. `data/processed/`, `features/` and `external/` are ignored by Git; a cache left at the old `features/<name>` location is still found.
++All archives already contain the destination folders listed below. Extract feature archives (top-level `features/`) **into `data/processed/`**, and the others **from the repository root**. Do not select the listed inner folder as the extraction root. Archives contain no downloaded encoder weights and no dataset image files; the audit archive does contain dataset-derived review and error-analysis grids (e.g. `error_analysis/false_negative.png`), so keep it private. `data/processed/`, `features/` and `external/` are ignored by Git; a cache left at the old `features/<name>` location is still found.
+ 
+-包内已包含下表目标目录。特征包（顶层为 `features/`）**解压到 `data/processed/`**，其他包**从仓库根目录解压**，不要把目标子目录再次作为解压根目录。包中不包含数据集图片或下载的编码器权重。`data/processed/`、`features/` 和 `external/` 已被 Git 忽略；仍放在旧位置 `features/<name>` 的缓存也能被找到。
++包内已包含下表目标目录。特征包（顶层为 `features/`）**解压到 `data/processed/`**，其他包**从仓库根目录解压**，不要把目标子目录再次作为解压根目录。包中不包含下载的编码器权重和数据集图片文件；但完整审计包含有由数据集图片生成的人工核对与错误分析图集（如 `error_analysis/false_negative.png`），请勿公开。`data/processed/`、`features/` 和 `external/` 已被 Git 忽略；仍放在旧位置 `features/<name>` 的缓存也能被找到。
+ 
+ | Filename / 文件名 | Bytes / 字节 | MiB | Creates / 生成目录 | Download / 下载 |
+ |---|---:|---:|---|---|
+@@ -22,13 +22,13 @@ All archives already contain the destination folders listed below. Extract featu
+ 4a1a93ff2d2c37b2819637f8f99c2f862d2d55400bf0eacd83e22aebeb20ec63  Image_Baseline_Clean_Verification_20261009.zip
+ ```
+ 
+-The audit archive is an exact file-tree snapshot of the preserved `image-baseline` commit `51c6dbd`, including earlier experiments, full logs, Excel tables, repeated grids, and code snapshots. Git history remains in that branch. Files inside it are historical evidence; follow the current reproduction guide for runnable instructions.
++The audit archive is an exact file-tree snapshot of the preserved `image-baseline` commit `51c6dbd` of the original team repository, including earlier experiments, full logs, Excel tables, repeated grids, and code snapshots. Its Git history remains in that repository, not in this one. Files inside it are historical evidence; follow the current reproduction guide for runnable instructions.
+ 
+-完整审计包是保留分支 `image-baseline` 的 `51c6dbd` 文件树快照，包含早期实验、完整日志、Excel 表格、重复图集与代码快照。Git 历史仍保留在该分支。审计包内容是历史证据，运行程序请使用当前复现说明。
++完整审计包是原团队仓库保留分支 `image-baseline` 的 `51c6dbd` 文件树快照，包含早期实验、完整日志、Excel 表格、重复图集与代码快照。其 Git 历史保留在原仓库中，不在本仓库中。审计包内容是历史证据，运行程序请使用当前复现说明。
+ 
+-The feature archive contains complete Train/Validation tensors (768-dimensional `pooler_output`, sample IDs and labels) plus metadata. It is used only for the fast reproduction route. The verification archive contains the fresh checks performed on the clean branch. None of these ZIP files or feature tensors is tracked in this branch.
++The feature archive contains complete Train/Validation tensors (768-dimensional `pooler_output`, sample IDs and labels) plus metadata. It is used only for the fast reproduction route. The verification archive contains the fresh checks performed on the image group's clean branch. None of these ZIP files or feature tensors is tracked in this repository.
+ 
+-特征包包含完整 Train/Validation 张量（768 维 `pooler_output`、sample ID、标签）及元数据，用于快速复现。检测包包含精简分支本次实际验证的证据。本分支不跟踪这些 ZIP 或特征张量。
++特征包包含完整 Train/Validation 张量（768 维 `pooler_output`、sample ID、标签）及元数据，用于快速复现。检测包包含图片组精简分支实际验证的证据。本仓库不跟踪这些 ZIP 或特征张量。
+ 
+ Before extraction, compare `Get-FileHash <archive-path> -Algorithm SHA256` with this list. Then, from the repository root and without `-Force`, run `Expand-Archive -LiteralPath <archive-path> -DestinationPath data/processed` for the feature archive and `-DestinationPath .` for the two others. (A feature archive expanded at the root, into `features/`, is still found.)
+ 
+diff --git a/docs/Image_Reproduction.md b/docs/Image_Reproduction.md
+index dace314..842c348 100644
+--- a/docs/Image_Reproduction.md
++++ b/docs/Image_Reproduction.md
+@@ -18,9 +18,9 @@ The three retained `best.pt` files contain only small classifier heads: the orig
+ 
+ ## A. Downloaded cache / 下载缓存快速复现
+ 
+-Download `Image_Features_CLIP_ViTB32_20261006.zip` from the [cloud manifest](Image_Cloud_Assets.md) once its real link is available. Check its size and SHA-256, then extract into `data/processed/`. It creates `data/processed/features/20261006_code_fixes_validation_v2/` with `train.pt`, `validation.pt`, and `meta.json`. The tensors contain 768-dimensional features, sample IDs, and labels; metadata and data alignment are checked before use. The original metadata for all three splits is still required for validation; this route does not read dataset image files. This route needs no encoder download or feature extraction.
++Get the cache from `Feature_Caches_merged_20261018_v2.zip` ([Multimodal_Assets.md](Multimodal_Assets.md); `unzip -n` at the repository root), or download `Image_Features_CLIP_ViTB32_20261006.zip` from the [cloud manifest](Image_Cloud_Assets.md) once its link is available, check its size and SHA-256 and extract it into `data/processed/`. It creates `data/processed/features/20261006_code_fixes_validation_v2/` with `train.pt`, `validation.pt`, and `meta.json`. The tensors contain 768-dimensional features, sample IDs, and labels; metadata and data alignment are checked before use. The original metadata for all three splits is still required for validation; this route does not read dataset image files. This route needs no encoder download or feature extraction.
+ 
+-待[云端清单](Image_Cloud_Assets.md)提供实际链接后，下载 `Image_Features_CLIP_ViTB32_20261006.zip`，核对大小和 SHA-256，解压到 `data/processed/`。将生成 `data/processed/features/20261006_code_fixes_validation_v2/`，包含 `train.pt`、`validation.pt`、`meta.json`。缓存包含 768 维特征、sample ID 和标签，使用前会检查元数据及样本一致性。仍需原始三个划分的元数据；此方式不读取数据集图片、不下载编码器、不重新提取特征。
++从 `Feature_Caches_merged_20261018_v2.zip` 获取缓存（见 [Multimodal_Assets.md](Multimodal_Assets.md)，在仓库根目录 `unzip -n`）；或待[云端清单](Image_Cloud_Assets.md)提供链接后下载 `Image_Features_CLIP_ViTB32_20261006.zip`，核对大小和 SHA-256，解压到 `data/processed/`。将生成 `data/processed/features/20261006_code_fixes_validation_v2/`，包含 `train.pt`、`validation.pt`、`meta.json`。缓存包含 768 维特征、sample ID 和标签，使用前会检查元数据及样本一致性。仍需原始三个划分的元数据；此方式不读取数据集图片、不下载编码器、不重新提取特征。
+ 
+ ```powershell
+ Get-FileHash 'D:\Downloads\Image_Features_CLIP_ViTB32_20261006.zip' -Algorithm SHA256
+@@ -65,6 +65,6 @@ python -m unittest discover -s tests -v
+ python -m pip check
+ ```
+ 
+-The suite checks overwrite protection, cache completeness and alignment, failure propagation, and CSV precision at threshold boundaries. See [current verification results](Image_Test_Results.md) for the clean-branch runs. Neither reproduction route scores Test.
++The suite checks overwrite protection, cache completeness and alignment, failure propagation, and CSV precision at threshold boundaries. See [current verification results](Image_Test_Results.md) for the image group's clean-branch runs (original team repository). Neither reproduction route scores Test.
+ 
+-测试覆盖覆盖保护、缓存完整性与样本对齐、失败状态传递和阈值附近的 CSV 精度。精简分支的实际运行见[检测结果](Image_Test_Results.md)。两种复现方式都不评分 Test。
++测试覆盖覆盖保护、缓存完整性与样本对齐、失败状态传递和阈值附近的 CSV 精度。图片组精简分支（原团队仓库）的实际运行见[检测结果](Image_Test_Results.md)。两种复现方式都不评分 Test。
+diff --git a/docs/Image_Test_Results.md b/docs/Image_Test_Results.md
+index 04c9aa5..94db6ca 100644
+--- a/docs/Image_Test_Results.md
++++ b/docs/Image_Test_Results.md
+@@ -1,5 +1,9 @@
+ # Clean image branch verification / 图片精简分支检测
+ 
++*Historical record from the original team repository: the branches and commits named here (`image-baseline-clean`, `main` `ff79624`, `image-baseline` `51c6dbd`) are not part of this repository's history.*
++
++*原团队仓库的历史记录：文中的分支与提交（`image-baseline-clean`、`main` 的 `ff79624`、`image-baseline` 的 `51c6dbd`）不在本仓库历史中。*
++
+ Verified on 2026-10-09 from the repository root, on `image-baseline-clean` based directly on `main` commit `ff79624`. The full audit branch remains at `51c6dbd`. Dataset access used `MEMOTION_DATA_DIR`. Environment: Windows, Python 3.12.14, PyTorch 2.11.0+cu128, torchvision 0.26.0+cu128, Transformers 5.18.0, NVIDIA RTX 3080.
+ 
+ 2026-10-09 在仓库根目录检测 `image-baseline-clean`，直接基于 `main` 的 `ff79624`，完整审计分支仍为 `51c6dbd`。数据访问使用 `MEMOTION_DATA_DIR`。环境为 Windows、Python 3.12.14、PyTorch 2.11.0+cu128、torchvision 0.26.0+cu128、Transformers 5.18.0、NVIDIA RTX 3080。
+@@ -25,6 +29,6 @@ Test images were checked for readability only; no Test predictions or scores wer
+ 
+ Test 图片只检查可读性，未生成 Test 预测或分数。本次验证覆盖上述环境的图片流程，保留了 `main` 的文字/多模态文件；不包含这些模型的训练或其他平台的执行。不同硬件的概率可能变化，复现按约定的 0.01 Macro-F1 容差判断。
+ 
+-Full step logs, environment details, negative checks, and fresh validation outputs are in `Image_Baseline_Clean_Verification_20261009.zip`, listed in [the cloud manifest](Image_Cloud_Assets.md). Upload and live PR publication are still pending; this report is ready to include in the PR.
++Full step logs, environment details, negative checks, and fresh validation outputs are in `Image_Baseline_Clean_Verification_20261009.zip`, listed in [the cloud manifest](Image_Cloud_Assets.md).
+ 
+-完整逐步日志、环境记录、失败场景检测和新验证输出在[云端清单](Image_Cloud_Assets.md)中的 `Image_Baseline_Clean_Verification_20261009.zip`。实际上传和在线 PR 发布仍待完成；本报告可直接用于 PR。
++完整逐步日志、环境记录、失败场景检测和新验证输出在[云端清单](Image_Cloud_Assets.md)中的 `Image_Baseline_Clean_Verification_20261009.zip`。
+diff --git a/docs/Multimodal_Assets.md b/docs/Multimodal_Assets.md
+index 484e934..4dee9e8 100644
+--- a/docs/Multimodal_Assets.md
++++ b/docs/Multimodal_Assets.md
+@@ -1,31 +1,42 @@
+ # External assets / 外部资料
+ 
+ Checkpoints, feature caches and run folders are not in Git (team README 9.4). They are four zip
+-archives. Keep them on the team Drive (`Meme_Project/Model_ckpt/`) or attach them to a GitHub
+-Release; any copy is valid if its size and SHA-256 match the table below. The archives contain no
+-dataset images and no encoder weights. Every file in them can be regenerated on a 4-vCPU CPU with
+-the commands in [multimodal_baseline.md](multimodal_baseline.md) and
+-[Team_Review/multimodal/overfitting/README.md](../Team_Review/multimodal/overfitting/README.md).
++archives, kept outside the repository by its owner, on the team Drive (`Meme_Project/Model_ckpt/`)
++or as release assets of a **private** repository. This page gives no download link: the owner adds
++the link here after uploading. Any copy is valid if its size and SHA-256 match the table below.
+ 
+-检查点、特征缓存和实验目录不进 Git（团队 README 9.4），以四个压缩包分发：放在团队 Drive
+-（`Meme_Project/Model_ckpt/`）或 GitHub Release 中均可，只要大小与 SHA-256 与下表一致。压缩包不含数据集图片和编码器权重，
+-其中的文件都可以在 4 vCPU 的 CPU 上用 [multimodal_baseline.md](multimodal_baseline.md) 与
+-[过拟合诊断](../Team_Review/multimodal/overfitting/README.md) 的命令重新生成。
++检查点、特征缓存和实验目录不进 Git（团队 README 9.4），以四个压缩包形式由仓库负责人保存在仓库之外：团队 Drive
++（`Meme_Project/Model_ckpt/`）或**私有**仓库的 Release。本页暂无下载链接，上传后由负责人补上；任何副本只要大小与
++SHA-256 与下表一致即可使用。
++
++The archives contain no encoder weights and no dataset image files. `Run_Outputs_20261018_v2.zip` has
++per-sample predictions (`sample_id`, dataset label, predicted probability) in every run folder; the
++dataset-derived meme review grid is only in Git (see README "Rules").
++
++压缩包不含编码器权重和数据集图片文件。`Run_Outputs_20261018_v2.zip` 的每个实验目录含逐样本预测（`sample_id`、数据集标签、预测概率）；由数据集图片生成的人工核对图集只在 Git 中（见 README "Rules"）。
+ 
+ **Unzip every archive at the repository root with `unzip -n`** (never overwrite). The archives
+ already contain their destination folders and write only into `checkpoints/`,
+-`data/processed/features/`, `outputs/` and `logs/`, all git-ignored except files already in Git
+-(which are byte-identical and therefore skipped).
++`data/processed/features/`, `outputs/` and `logs/`. These folders are git-ignored; files that are
++already in Git are byte-identical to the archive copies and are skipped.
+ 
+ **所有压缩包都在仓库根目录用 `unzip -n` 解压**（不覆盖已有文件）。压缩包已包含目标目录，只写入
+ `checkpoints/`、`data/processed/features/`、`outputs/`、`logs/`；这些目录被 Git 忽略，已在 Git 中的文件与压缩包中的逐字节相同，会被跳过。
+ 
+ | Archive / 压缩包 | Bytes / 字节 | Creates / 生成 | Needed for / 用途 |
+ |---|---:|---|---|
+-| `Checkpoints_merged_20261018_v2.zip` | 32357302 | `checkpoints/image/` (3 image-group heads), `checkpoints/multimodal/20261016_*` (14 multimodal and ablation heads), per-bundle README / MANIFEST / SHA256SUMS in `checkpoints/` | evaluation, serving, results report |
+-| `Checkpoints_overfitting_diagnostic_20261018_v2.zip` | 51308314 | `checkpoints/multimodal/20261018_overfit_*` (42 sweep heads) | optional: re-evaluating the diagnostic sweep |
+-| `Feature_Caches_merged_20261018.zip` | 77957605 | `data/processed/features/`: `distilbert_first_token/`, `distilbert_mean_pooling/` (train/validation/test), `20261006_code_fixes_validation_v2/` (image group, CUDA, train/validation), `clip_vitb32_pooler_cpu/` (CPU, train/validation/test), each with `meta.json` | training and evaluating without downloading the encoders |
+-| `Run_Outputs_20261018.zip` | 5076518 | `outputs/multimodal/` (56 runs: 14 of 2026-10-16 + 42 of the diagnostic sweep), `outputs/image/20261006_code_fixes_validation_v2_cpu_features_check/`, `logs/` (step logs with timing and exit codes) | reference metrics for `evaluate.py`, results report |
++| `Checkpoints_merged_20261018_v2.zip` | 32357210 | `checkpoints/image/` (3 image-group heads), `checkpoints/multimodal/20261016_*` (14 multimodal and ablation heads), and `checkpoints/{README,MANIFEST,SHA256SUMS}_merged.*` | evaluation, serving, results report |
++| `Checkpoints_overfitting_diagnostic_20261018_v2.zip` | 51308414 | `checkpoints/multimodal/20261018_overfit_*` (42 sweep heads), and `checkpoints/{README,MANIFEST,SHA256SUMS}_overfitting_diagnostic.*` | optional: re-evaluating the diagnostic sweep |
++| `Feature_Caches_merged_20261018_v2.zip` | 97754750 | `data/processed/features/`: `distilbert_first_token/`, `distilbert_mean_pooling/`, `reproduction_distilbert_first_token/` (train/validation/test), `20261006_code_fixes_validation_v2/` (image group, CUDA, train/validation), `clip_vitb32_pooler_cpu/` (CPU, train/validation/test), each with `meta.json` | training and evaluating without downloading the encoders |
++| `Run_Outputs_20261018_v2.zip` | 1557165 | `outputs/multimodal/` (56 run folders: 14 of 2026-10-16 + 42 of the diagnostic sweep), `outputs/image/20261006_code_fixes_validation_v2_cpu_features_check/`, `logs/` (27 steps: command, start and end time, exit code, output) | reference metrics for `evaluate.py`, results report |
++
++`reproduction_distilbert_first_token/` is the re-extracted text cache that the
++`20261016_distilbert_clip_seed42_reproduction_cpu` head records; its tensors are byte-identical to
++`distilbert_first_token/` (only the timings in `meta.json` differ). In the step logs the
++machine-specific prefixes are shortened to `python`, `hf_local/` and `<repo>`.
++
++`reproduction_distilbert_first_token/` 是 `_reproduction_cpu` 分类头记录的重新提取的文字缓存，张量与
++`distilbert_first_token/` 逐字节相同（仅 `meta.json` 中的耗时不同）。逐步日志中与机器相关的路径前缀已缩写为 `python`、`hf_local/` 和 `<repo>`。
+ 
+ What each checkpoint is, which one to use and how to load it: [checkpoints.md](checkpoints.md).
+ 
+@@ -34,10 +45,10 @@ What each checkpoint is, which one to use and how to load it: [checkpoints.md](c
+ ## SHA-256
+ 
+ ```text
+-e6f4f4a23a0ef57462e91d33a347d3b13ff67fcd880c12f470cfa45b45966e64  Checkpoints_merged_20261018_v2.zip
+-b9e42ac8209281aecba76c4f2905c67f55babbc59085b3fe1d995ddba1e413cd  Checkpoints_overfitting_diagnostic_20261018_v2.zip
+-1858d8ce403065865ef3882a21925076046ec5b9b3c01e70ceaef2413dc3e89e  Feature_Caches_merged_20261018.zip
+-1e157138d534bc0b66386bff22f6e248797fe5cc0093f9d881396fc80161aa23  Run_Outputs_20261018.zip
++99687a70b7e2431378ab2b98fd86f7924b80b38520e168e1d379354cae61ce8b  Checkpoints_merged_20261018_v2.zip
++c0330822ffe496e293084180fe7e0118e30098ad090f28ba355352153afcdc2a  Checkpoints_overfitting_diagnostic_20261018_v2.zip
++6b69e05d29352e52bd309d111978612bd22c1b9f1e57020bd5c6a9321c7510dd  Feature_Caches_merged_20261018_v2.zip
++8a2e0a7e557f168a5a3b85eb93ec356d47381320f35225602d081d77c32b0ecb  Run_Outputs_20261018_v2.zip
+ ```
+ 
+ ## Fast route / 快速路线
+@@ -48,28 +59,50 @@ No encoder download is needed for training or evaluating heads on the caches.
+ 
+ ```bash
+ unzip -n Checkpoints_merged_20261018_v2.zip
+-unzip -n Feature_Caches_merged_20261018.zip
+-unzip -n Run_Outputs_20261018.zip
+-sha256sum -c docs/checkpoints_SHA256SUMS.txt --ignore-missing
++unzip -n Feature_Caches_merged_20261018_v2.zip
++unzip -n Run_Outputs_20261018_v2.zip
++sha256sum -c checkpoints/SHA256SUMS_merged.txt
+ export MEMOTION_DATA_DIR=/path/to/MMSoc_Memotion_exported   # the caches are checked against metadata.csv
+-python -m src.evaluation.evaluate --run_id 20261016_distilbert_clip_seed42 --out_dir outputs/multimodal/quick_check
++python -m src.evaluation.evaluate --run_id 20261016_distilbert_clip_seed42 \
++    --out_dir outputs/multimodal/20261016_distilbert_clip_seed42/quick_check
+ python -m src.models.trainer --config configs/train/multimodal_baseline.yaml --run_id 20261016_distilbert_clip_seed42_my_reproduction
+ ```
+ 
++Write re-evaluations inside the run folder (as above), not directly under `outputs/multimodal/`:
++`scripts/summarize_multimodal_runs.py` counts every folder there as a run.
++
++重新评估请写到实验目录内部（如上），不要直接放在 `outputs/multimodal/` 下：`scripts/summarize_multimodal_runs.py` 会把那里的每个目录都当作一次实验。
++
+ The cache loaders check every file's SHA-256, sample IDs, order and labels against the dataset
+ metadata before use.
+ 
+ 缓存读取程序在使用前会核对每个文件的 SHA-256、sample ID、顺序和标签是否与数据集元数据一致。
+ 
++## Regenerating / 重新生成
++
++Every multimodal file can be regenerated on a 4-vCPU CPU with the commands in
++[multimodal_baseline.md](multimodal_baseline.md) and the
++[overfitting diagnostic](../Team_Review/multimodal/overfitting/README.md); training on CPU is
++deterministic. The image group's cache `20261006_code_fixes_validation_v2` and its three heads come
++from the image group's CUDA run ([Image_Reproduction.md](Image_Reproduction.md)); a CPU re-extraction
++differs slightly because of TF32 (D19), so that cache is shipped as is.
++
++所有多模态文件都可以在 4 vCPU 的 CPU 上用 [multimodal_baseline.md](multimodal_baseline.md) 与
++[过拟合诊断](../Team_Review/multimodal/overfitting/README.md) 的命令重新生成（CPU 训练可逐位复现）。图片组缓存
++`20261006_code_fixes_validation_v2` 及其三个分类头来自图片组的 CUDA 运行（见 [Image_Reproduction.md](Image_Reproduction.md)）；
++在 CPU 上重新提取会因 TF32 略有差异（D19），因此按原样提供。
++
+ ## Earlier archives / 旧压缩包
+ 
+-These archives replace the earlier ones. Do not mix the two sets.
++The `_v2` archives replace all earlier ones. Do not mix the two sets.
+ 
+-以上压缩包取代下列旧压缩包，请不要混用。
++`_v2` 压缩包取代下列所有旧压缩包，请不要混用。
+ 
+-| Earlier archive | Replaced by | Note |
++| Earlier archive | Replaced by | Difference |
+ |---|---|---|
+-| `Text_Features_DistilBERT_20261016.zip` | `Feature_Caches_merged_20261018.zip` | same files (byte-identical), new location `data/processed/features/` |
+-| `Multimodal_Assets_20261016.zip` | `Checkpoints_merged_20261018_v2.zip`, `Feature_Caches_merged_20261018.zip`, `Run_Outputs_20261018.zip` | its 14 checkpoints, CPU CLIP cache, 15 run folders and `logs/` are byte-identical to the new copies |
+-| `Image_Features_CLIP_ViTB32_20261006.zip` (image group, [Image_Cloud_Assets.md](Image_Cloud_Assets.md)) | still valid; also inside `Feature_Caches_merged_20261018.zip` | byte-identical cache |
+-| `Checkpoints_merged_20261018.zip`, `Checkpoints_overfitting_diagnostic_20261018.zip` (without `_v2`) | the `_v2` archives | same checkpoints, but README.md / MANIFEST.csv / SHA256SUMS sat at the archive root and would overwrite the repository README |
++| `Checkpoints_merged_20261018.zip`, `Checkpoints_overfitting_diagnostic_20261018.zip` | the two `Checkpoints_*_v2` archives | same checkpoint files; the old ones had README.md / MANIFEST.csv / SHA256SUMS at the archive root, which collide with the repository README when unzipped at the root |
++| `Feature_Caches_merged_20261018.zip` | `Feature_Caches_merged_20261018_v2.zip` | same four caches; `reproduction_distilbert_first_token/` added |
++| `Run_Outputs_20261018.zip` | `Run_Outputs_20261018_v2.zip` | same run folders without the meme review grid (in Git); local path prefixes shortened in `logs/` and in two `checks/end_to_end_validation.json` |
++| `Text_Features_DistilBERT_20261016.zip` | `Feature_Caches_merged_20261018_v2.zip` | same files, new location `data/processed/features/` |
++| `Multimodal_Assets_20261016.zip` | `Checkpoints_merged_20261018_v2.zip`, `Feature_Caches_merged_20261018_v2.zip`, `Run_Outputs_20261018_v2.zip` | same 14 checkpoints and CPU CLIP cache; run folders and logs as in the row above |
++| `Image_Features_CLIP_ViTB32_20261006.zip` (image group, [Image_Cloud_Assets.md](Image_Cloud_Assets.md)) | still valid; also inside `Feature_Caches_merged_20261018_v2.zip` | byte-identical cache |
+diff --git a/docs/Multimodal_Test_Results.md b/docs/Multimodal_Test_Results.md
+index ca10b4a..af80b8b 100644
+--- a/docs/Multimodal_Test_Results.md
++++ b/docs/Multimodal_Test_Results.md
+@@ -1,8 +1,8 @@
+ # Multimodal verification / 多模态检测记录
+ 
+-Verified on 2026-10-16 from the repository root. Environment: Linux, 4 vCPU, no GPU, Python 3.12.3, PyTorch 2.11.0, torchvision 0.26.0, Transformers 5.18.0. Dataset `MMSoc_Memotion_exported.zip` (SHA-256 `9d019fb4…330c`). Step logs are in `logs/` inside `Run_Outputs_20261018.zip` ([asset list](Multimodal_Assets.md)).
++Verified on 2026-10-16 from the repository root. Environment: Linux, 4 vCPU, no GPU, Python 3.12.3, PyTorch 2.11.0, torchvision 0.26.0, Transformers 5.18.0. Dataset `MMSoc_Memotion_exported.zip` (SHA-256 `9d019fb4…330c`). Step logs are in `logs/` inside `Run_Outputs_20261018_v2.zip` ([asset list](Multimodal_Assets.md)).
+ 
+-2026-10-16 在仓库根目录检测。环境：Linux、4 vCPU、无 GPU、Python 3.12.3、PyTorch 2.11.0、torchvision 0.26.0、Transformers 5.18.0。数据集 `MMSoc_Memotion_exported.zip`（SHA-256 `9d019fb4…330c`）。逐步日志在 `Run_Outputs_20261018.zip` 的 `logs/` 中（[资料清单](Multimodal_Assets.md)）。
++2026-10-16 在仓库根目录检测。环境：Linux、4 vCPU、无 GPU、Python 3.12.3、PyTorch 2.11.0、torchvision 0.26.0、Transformers 5.18.0。数据集 `MMSoc_Memotion_exported.zip`（SHA-256 `9d019fb4…330c`）。逐步日志在 `Run_Outputs_20261018_v2.zip` 的 `logs/` 中（[资料清单](Multimodal_Assets.md)）。
+ 
+ | Check / 检查 | Result / 结果 |
+ |---|---|
+@@ -11,9 +11,9 @@ Verified on 2026-10-16 from the repository root. Environment: Linux, 4 vCPU, no
+ | Text extraction / 文字特征提取 | train 67.0 s, validation 7.6 s, test 8.3 s on CPU; 768-d, finite; `[NO_TEXT]` 1 train / 3 test; >128 tokens 4 train / 1 test; median 20 tokens |
+ | Text re-extraction / 文字特征重提取 | fresh extraction into new folders is bit-identical on all three splits (max abs diff 0) |
+ | CLIP on CPU vs image group CUDA cache / CPU 与 CUDA 图片特征 | mean cosine 0.99997 (train and validation); mean abs diff 1.8e-3 (feature mean abs 0.73); min cosine 0.9815 (`train_004233`), 0.9854 (`validation_000550`) |
+-| Cause of that gap / 差异原因 | `scripts/check_tf32_emulation.py` (output `Team_Review/multimodal/report/tf32_emulation.json`) rounds the patch-embedding convolution to TF32, PyTorch's CUDA default (`cudnn.allow_tf32=True`). On the first 64 validation images the mean abs diff drops from 1.7e-3 to 2.9e-5. The 10 worst train and 10 worst validation images go from cosine 0.981–0.985 to ≥ 0.99999995. Weights and preprocessing agree; the CUDA cache is the approximate one. |
++| Cause of that gap / 差异原因 | `scripts/check_tf32_emulation.py` (output `Team_Review/multimodal/report/tf32_emulation.json`) rounds the patch-embedding convolution to TF32, PyTorch's CUDA default (`cudnn.allow_tf32=True`). On the first 64 validation images the mean abs diff drops from 1.7e-3 to 2.9e-5. The 10 worst train and 10 worst validation images go from cosine 0.981–0.985 to ≥ 0.9999999. Weights and preprocessing agree; the CUDA cache is the approximate one. |
+ | Image head on CPU features / 图片分类头使用 CPU 特征 | image group's final head: Macro-F1 0.528634 vs reported 0.527606 (diff 0.0010, within D11) |
+-| Unit tests / 单元测试 | `tests/test_multimodal_pipeline.py`: 9/9 pass. Image suite: 15/16 pass; `test_reproduction_script_requires_dataset_and_one_cache_mode` needs `powershell`, which Linux does not have (not related to this change) |
++| Unit tests / 单元测试 | `tests/test_multimodal_pipeline.py` (the pre-restructure test file; its tests now live in `tests/test_data_loader.py` and `tests/test_model.py`, D22): 9/9 pass. Image suite: 15/16 pass; `test_reproduction_script_requires_dataset_and_one_cache_mode` needs `powershell`, which Linux does not have (not related to this change) |
+ | Smoke test / Smoke test | text (2, 768), image (2, 768), fused (2, 1536), logits (2, 2); `MULTIMODAL SMOKE TEST OK` |
+ | Main run / 主实验 | `20261016_distilbert_clip_seed42`: Macro-F1 0.533637, accuracy 0.656652, best epoch 25/30, 43.5 s; `PREDICTIONS OK` (699 rows) |
+ | Checkpoint reload / Checkpoint 重载 | identical metrics and prediction CSV (tolerance 0) |
+@@ -30,7 +30,7 @@ Recommendation for future CUDA extraction: set `torch.backends.cudnn.allow_tf32
+ 
+ ## 2026-10-17 · repository restructure verification / 目录重构验证
+ 
+-After the code moved to the `configs/ data/ src/{data,features,models,evaluation,serving,utils}` layout (D22), the old code (commit `411629a`) and the new code were run on identical inputs on the same 4-vCPU CPU machine.
++After the code moved to the `configs/ data/ src/{data,features,models,evaluation,serving,utils}` layout (D22), the old code (commit `411629a` of the merge history, not part of this repository) and the new code were run on identical inputs on the same 4-vCPU CPU machine.
+ 
+ 代码迁移到新目录结构（D22）后，在同一台 4 vCPU CPU 机器上用相同输入分别运行旧代码（`411629a`）与新代码。
+ 
+diff --git a/docs/checkpoints.md b/docs/checkpoints.md
+index 34d3ed2..12501ae 100644
+--- a/docs/checkpoints.md
++++ b/docs/checkpoints.md
+@@ -8,18 +8,18 @@ All 59 trained heads of this repository (image group 3, multimodal 14, overfitti
+ 
+ ## 1. 获取与放置 / Where to get them
+ 
+-团队 README 9.4 规定 checkpoint 不提交到 GitHub，因此除图片组 3 个 8.6 KB 的线性头（已在 Git 中）外，其余以压缩包分发。全部压缩包都**在仓库根目录用 `unzip -n` 解压**（不覆盖已有文件），文件会落到代码默认读取的位置；压缩包只写入 `checkpoints/`、`data/processed/features/`、`outputs/`、`logs/`。特征缓存与实验记录压缩包见 [Multimodal_Assets.md](Multimodal_Assets.md)。
++团队 README 9.4 规定 checkpoint 不提交到 GitHub，因此除图片组 3 个 8.6 KB 的线性头（已在 Git 中）外，其余以压缩包分发。两个 checkpoint 压缩包都**在仓库根目录用 `unzip -n` 解压**（不覆盖已有文件），只写入 `checkpoints/`，文件会落到代码默认读取的位置。特征缓存与实验记录压缩包、获取方式与旧压缩包见 [Multimodal_Assets.md](Multimodal_Assets.md)。
+ 
+-Checkpoints are not in Git (team README 9.4), except the three 8.6 KB image-group heads. Unzip each archive **at the repository root with `unzip -n`**; nothing is written outside `checkpoints/`. Feature caches and run folders: [Multimodal_Assets.md](Multimodal_Assets.md).
++Checkpoints are not in Git (team README 9.4), except the three 8.6 KB image-group heads. Unzip both checkpoint archives **at the repository root with `unzip -n`**; they write only into `checkpoints/`. Feature caches, run folders, where to get the archives and the earlier archives: [Multimodal_Assets.md](Multimodal_Assets.md).
+ 
+ | 压缩包 / Archive | 字节 / Bytes | 内容 | SHA-256 |
+ |---|---:|---|---|
+-| `Checkpoints_merged_20261018_v2.zip` | 32357302 | `checkpoints/image/`（3）+ `checkpoints/multimodal/20261016_*`（14） | `e6f4f4a23a0ef57462e91d33a347d3b13ff67fcd880c12f470cfa45b45966e64` |
+-| `Checkpoints_overfitting_diagnostic_20261018_v2.zip` | 51308314 | `checkpoints/multimodal/20261018_overfit_*`（42，只用于分析） | `b9e42ac8209281aecba76c4f2905c67f55babbc59085b3fe1d995ddba1e413cd` |
++| `Checkpoints_merged_20261018_v2.zip` | 32357210 | `checkpoints/image/`（3）+ `checkpoints/multimodal/20261016_*`（14） | `99687a70b7e2431378ab2b98fd86f7924b80b38520e168e1d379354cae61ce8b` |
++| `Checkpoints_overfitting_diagnostic_20261018_v2.zip` | 51308414 | `checkpoints/multimodal/20261018_overfit_*`（42，只用于分析） | `c0330822ffe496e293084180fe7e0118e30098ad090f28ba355352153afcdc2a` |
+ 
+ 每个压缩包在 `checkpoints/` 下附带自己的 `README_<bundle>.md`、`MANIFEST_<bundle>.csv` 与 `SHA256SUMS_<bundle>.txt`（只列本包的文件）；本目录的 [checkpoints_manifest.csv](checkpoints_manifest.csv) 与 [checkpoints_SHA256SUMS.txt](checkpoints_SHA256SUMS.txt) 列出全部 59 个。
+ 
+-**已被取代 / Superseded:** 同名但不带 `_v2` 的 `Checkpoints_*_20261018.zip` 把 README.md 放在压缩包根目录，在仓库根目录解压会覆盖仓库的 README.md，请改用 `_v2`（其中的 checkpoint 逐字节相同）；更早的 `Multimodal_Assets_20261016.zip` / `Text_Features_DistilBERT_20261016.zip` 的内容（14 个多模态 checkpoint、特征缓存、实验目录、日志）都逐字节包含在 2026-10-18 的压缩包里。
++**已被取代 / Superseded:** 不带 `_v2` 的 `Checkpoints_*_20261018.zip` 把 README.md 放在压缩包根目录，会与仓库的 README.md 冲突；请改用 `_v2`（checkpoint 文件逐字节相同）。所有旧压缩包的对应关系见 [Multimodal_Assets.md](Multimodal_Assets.md#earlier-archives--旧压缩包)。 The archives without `_v2` put README.md at the archive root, where it collides with the repository README; the checkpoint files are byte-identical.
+ 
+ ```text
+ checkpoints/image/<run_id>/best.pt        # 图片组线性头
+@@ -70,7 +70,7 @@ outputs/<task>/<run_id>/                  # 实验记录
+ 
+ ### 4.1 图片组（3 个）
+ 
+-3 个线性头使用相同的冻结 CLIP 特征。在最终缓存 `20261006_code_fixes_validation_v2` 上重放：原始基线 0.529162，Zhihan 复现 0.527606，最终参考 0.527606（[Image_Test_Results.md](Image_Test_Results.md)）。**注意**：图片组仓库中 `20261001_clip_vitb32_seed42_zhihan_rtx3080/best.pt` 与 `20261006_code_fixes_validation_v2/best.pt` 是逐字节相同的同一个文件（SHA-256 相同），这里按原样保留两个路径。
++3 个线性头使用相同的冻结 CLIP 特征。在最终缓存 `20261006_code_fixes_validation_v2` 上重放：原始基线 0.529162，Zhihan 复现 0.527606，最终参考 0.527606（[Image_Test_Results.md](Image_Test_Results.md)）。**注意**：图片组仓库中 `20261001_clip_vitb32_seed42_zhihan_rtx3080/best.pt` 与 `20261006_code_fixes_validation_v2/best.pt` 是逐字节相同的同一个文件（SHA-256 相同），这里按原样保留两个路径。两个 `20261001_*` 分类头没有实验目录（`outputs/image/20261001_*` 不存在），用 `evaluate.py` 重放时需用 `--reference_metrics` 指定参考指标文件（例如 `outputs/image/20261006_code_fixes_validation_v2/metrics_validation.json`），或直接与上面的数值比较。
+ 
+ | 标注 | run_id | seed | epoch | 验证 Macro-F1 | 分类头 | SHA-256 |
+ |---|---|---|---|---|---|---|
+@@ -156,17 +156,20 @@ outputs/<task>/<run_id>/                  # 实验记录
+ # 在仓库根目录
+ unzip -n Checkpoints_merged_20261018_v2.zip                  # -> checkpoints/（17 个）
+ unzip -n Checkpoints_overfitting_diagnostic_20261018_v2.zip  # 可选：-> checkpoints/multimodal/20261018_overfit_*（42 个）
+-unzip -n Feature_Caches_merged_20261018.zip                 # -> data/processed/features/
+-unzip -n Run_Outputs_20261018.zip                           # 可选：-> outputs/、logs/（结果报告需要）
+-sha256sum -c docs/checkpoints_SHA256SUMS.txt --ignore-missing   # 校验已解压的 checkpoint
++unzip -n Feature_Caches_merged_20261018_v2.zip                 # -> data/processed/features/
++unzip -n Run_Outputs_20261018_v2.zip                           # 可选：-> outputs/、logs/（结果报告需要）
++sha256sum -c checkpoints/SHA256SUMS_merged.txt                 # 校验已解压的 checkpoint（诊断包：SHA256SUMS_overfitting_diagnostic.txt）
++sha256sum -c docs/checkpoints_SHA256SUMS.txt --ignore-missing  # 或者：按仓库中的完整清单校验
+ export MEMOTION_DATA_DIR=/path/to/MMSoc_Memotion_exported        # 缓存校验需要数据集的 metadata.csv
+ 
+ # 重放一个分类头（与记录的指标比较，容差 0.01）。仓库中的参考实验已有 reeval/，请给新目录；
+-# 其他 run 的参考指标 outputs/<task>/<run_id>/metrics_validation.json 在 Run_Outputs_20261018.zip 中
++# 其他 run 的参考指标 outputs/<task>/<run_id>/metrics_validation.json 在 Run_Outputs_20261018_v2.zip 中
++# （两个 20261001_* 图片头没有实验目录，需加 --reference_metrics <metrics_validation.json>，见 4.1）
+ python -m src.evaluation.evaluate --run_id 20261016_distilbert_clip_seed42 \
+     --out_dir outputs/multimodal/20261016_distilbert_clip_seed42/reeval_mine
+ python -m src.evaluation.evaluate --run_id 20261006_code_fixes_validation_v2 \
+-    --features_dir data/processed/features/20261006_code_fixes_validation_v2 --out_dir outputs/image/quick_check
++    --features_dir data/processed/features/20261006_code_fixes_validation_v2 \
++    --out_dir outputs/image/20261006_code_fixes_validation_v2/quick_check
+ 
+ # 用某个分类头启动服务（FastAPI，接口见 docs/api_spec.md）
+ CHECKPOINT=checkpoints/multimodal/20261016_distilbert_clip_seed42/best.pt bash scripts/serve.sh
+@@ -184,11 +187,11 @@ prob = head(text=text_features, image=image_features).softmax(-1)[:, 1]   # P(sa
+ 
+ `text_features` / `image_features` 是缓存里的原始 768 维特征（分类头内部做 L2 归一化）。从原始文字和图片推理请用 `src.serving.predictor.MultimodalPredictor.from_checkpoint(...)`。
+ 
+-结果报告（`python -m src.evaluation.results_report`）需要全部 14 个 2026-10-16 多模态 checkpoint、`Run_Outputs_20261018.zip` 中的实验目录和特征缓存。
++结果报告（`python -m src.evaluation.results_report`）需要全部 14 个 2026-10-16 多模态 checkpoint、`Run_Outputs_20261018_v2.zip` 中的实验目录和 `Feature_Caches_merged_20261018_v2.zip` 中的特征缓存（包括 `reproduction_distilbert_first_token`）。
+ 
+ ## 6. 注意事项 / Caveats
+ 
+-* 验证集只有 699 张，约 0.03–0.04 以下的 Macro-F1 差异无法分辨；单次实验所选 epoch 的值约偏高 0.015–0.02。
+-* 这些分类头几乎完美拟合训练集（训练 ROC-AUC ≥ 0.999，验证约 0.54），验证 loss 因高置信错误上升，概率偏过度自信，不宜当作校准后的概率使用。
++* 验证集只有 699 张，约 0.03–0.04 以下的 Macro-F1 差异无法分辨；使用图像的分类头，单次实验所选 epoch 的值约偏高 0.015–0.02（纯文字约 0.046）。
++* 2026-10-16 的融合与纯图像分类头（MLP 512）在所选 epoch 几乎完美拟合训练集（训练 ROC-AUC 0.999–0.9997，验证 0.525–0.550），验证 loss 因高置信错误上升，概率偏过度自信，不宜当作校准后的概率使用。纯文字（训练 0.61–0.63）、诊断中的线性头（0.69–0.73）和学习率 1e-4（0.84–0.90）拟合明显更弱（[过拟合诊断](../Team_Review/multimodal/overfitting/README.md)）。
+ * 纯文字分类头接近或低于随机水平：冻结 DistilBERT 特征在这个任务上没有可测量的信号。
+ * Test 从未评分；最终评估只做一次，且图片组缓存没有 test 划分，需要使用 `clip_vitb32_pooler_cpu`。
+diff --git a/docs/checkpoints_manifest.csv b/docs/checkpoints_manifest.csv
+index 11bd619..d58ea5d 100644
+--- a/docs/checkpoints_manifest.csv
++++ b/docs/checkpoints_manifest.csv
+@@ -1,60 +1,60 @@
+-path,task,group,run_id,model_name,seed,best_epoch,val_macro_f1,modalities,head,lr,weight_decay,parameters,text_features_dir,image_features_dir,bytes,sha256
+-checkpoints/image/20261001_clip_vitb32_seed42/best.pt,image,image group (shipped in Git),20261001_clip_vitb32_seed42,clip_vitb32_frozen,42,7,0.526579,image,linear,0.001,0.0001,1538,,,8589,66fcccc2c533bab39a2c1f6138723f3e848745e141ec381d3258199f6ff3be3f
+-checkpoints/image/20261001_clip_vitb32_seed42_zhihan_rtx3080/best.pt,image,image group (shipped in Git),20261001_clip_vitb32_seed42_zhihan_rtx3080,clip_vitb32_frozen,42,7,0.527606,image,linear,0.001,0.0001,1538,,,8589,413cc9e91d29e299bbc1358ee9bf4f88f004ce710fb605e63a1b18019d023a82
+-checkpoints/image/20261006_code_fixes_validation_v2/best.pt,image,image group (shipped in Git),20261006_code_fixes_validation_v2,clip_vitb32_frozen,42,7,0.527606,image,linear,0.001,0.0001,1538,,,8589,413cc9e91d29e299bbc1358ee9bf4f88f004ce710fb605e63a1b18019d023a82
+-checkpoints/multimodal/20261016_clip_frozen_mlp_image_only_seed42/best.pt,multimodal,multimodal 2026-10-16,20261016_clip_frozen_mlp_image_only_seed42,clip_frozen_mlp_image_only,42,29,0.556835,image,hidden 512 dropout 0.2,0.001,0.0001,394754,,features/20261006_code_fixes_validation_v2,1582335,fb1909a059a2a17f382528b42451ff42572ff3efb5eb0752eb4c0e8eed10b21d
+-checkpoints/multimodal/20261016_clip_frozen_mlp_image_only_seed43/best.pt,multimodal,multimodal 2026-10-16,20261016_clip_frozen_mlp_image_only_seed43,clip_frozen_mlp_image_only,43,23,0.535171,image,hidden 512 dropout 0.2,0.001,0.0001,394754,,features/20261006_code_fixes_validation_v2,1582335,9e915f57e95308625f45e0098606b39396f8a376583c506b9aa40fae6e5a248c
+-checkpoints/multimodal/20261016_clip_frozen_mlp_image_only_seed44/best.pt,multimodal,multimodal 2026-10-16,20261016_clip_frozen_mlp_image_only_seed44,clip_frozen_mlp_image_only,44,19,0.545703,image,hidden 512 dropout 0.2,0.001,0.0001,394754,,features/20261006_code_fixes_validation_v2,1582335,d5ec6d5bb8e88fb7e73ffe9a5c2535359719c5d24117ea262bebb17fe083ca4d
+-checkpoints/multimodal/20261016_distilbert_clip_frozen_seed43/best.pt,multimodal,multimodal 2026-10-16,20261016_distilbert_clip_frozen_seed43,distilbert_clip_frozen,43,27,0.531473,text+image,hidden 512 dropout 0.2,0.001,0.0001,787970,features/distilbert_first_token,features/20261006_code_fixes_validation_v2,3155263,783322d1742313555c346a64253474d37a6ed2fd46198f6faf874fcb6ba25e68
+-checkpoints/multimodal/20261016_distilbert_clip_frozen_seed44/best.pt,multimodal,multimodal 2026-10-16,20261016_distilbert_clip_frozen_seed44,distilbert_clip_frozen,44,21,0.544058,text+image,hidden 512 dropout 0.2,0.001,0.0001,787970,features/distilbert_first_token,features/20261006_code_fixes_validation_v2,3155263,0c11007c0b8c8e9f36e2eae6495810763d4c2b73317c8037822d2c8b5445d746
+-checkpoints/multimodal/20261016_distilbert_clip_seed42/best.pt,multimodal,multimodal 2026-10-16,20261016_distilbert_clip_seed42,distilbert_clip_frozen,42,25,0.533637,text+image,hidden 512 dropout 0.2,0.001,0.0001,787970,features/distilbert_first_token,features/20261006_code_fixes_validation_v2,3155263,b4020a38ca8bdfab07bfd8cedb744f8c5f83a86f5f065337bc6d9aee74246126
+-checkpoints/multimodal/20261016_distilbert_clip_seed42_reproduction_cpu/best.pt,multimodal,multimodal 2026-10-16,20261016_distilbert_clip_seed42_reproduction_cpu,distilbert_clip_frozen,42,29,0.543468,text+image,hidden 512 dropout 0.2,0.001,0.0001,787970,features/reproduction_distilbert_first_token,features/clip_vitb32_pooler_cpu,3155263,9f2640780438b040ea531f8f30815369f9661072cf0a0e1061312607f765aaf2
+-checkpoints/multimodal/20261016_distilbert_clip_seed42_rerun_same_inputs/best.pt,multimodal,multimodal 2026-10-16,20261016_distilbert_clip_seed42_rerun_same_inputs,distilbert_clip_frozen,42,25,0.533637,text+image,hidden 512 dropout 0.2,0.001,0.0001,787970,features/distilbert_first_token,features/20261006_code_fixes_validation_v2,3155263,b4020a38ca8bdfab07bfd8cedb744f8c5f83a86f5f065337bc6d9aee74246126
+-checkpoints/multimodal/20261016_distilbert_frozen_mlp_text_only_seed42/best.pt,multimodal,multimodal 2026-10-16,20261016_distilbert_frozen_mlp_text_only_seed42,distilbert_frozen_mlp_text_only,42,9,0.490285,text,hidden 512 dropout 0.2,0.001,0.0001,394754,features/distilbert_first_token,,1582335,8589759247e39864cd0c6a80c7c0aa68fb020c3d0e448e8d1a2f7997f8c13b12
+-checkpoints/multimodal/20261016_distilbert_frozen_mlp_text_only_seed43/best.pt,multimodal,multimodal 2026-10-16,20261016_distilbert_frozen_mlp_text_only_seed43,distilbert_frozen_mlp_text_only,43,12,0.477149,text,hidden 512 dropout 0.2,0.001,0.0001,394754,features/distilbert_first_token,,1582335,0768ad1c855f35f309b1fae75705e12560e7b70f13a3171f4a1ef8c36b4d505f
+-checkpoints/multimodal/20261016_distilbert_frozen_mlp_text_only_seed44/best.pt,multimodal,multimodal 2026-10-16,20261016_distilbert_frozen_mlp_text_only_seed44,distilbert_frozen_mlp_text_only,44,11,0.491201,text,hidden 512 dropout 0.2,0.001,0.0001,394754,features/distilbert_first_token,,1582335,d3a1c5e646206c65d9678a8a647373685f0c1f40410996f8f90663f40124aeee
+-checkpoints/multimodal/20261016_distilbert_meanpool_clip_frozen_seed42/best.pt,multimodal,multimodal 2026-10-16,20261016_distilbert_meanpool_clip_frozen_seed42,distilbert_meanpool_clip_frozen,42,29,0.531094,text+image,hidden 512 dropout 0.2,0.001,0.0001,787970,features/distilbert_mean_pooling,features/20261006_code_fixes_validation_v2,3155263,32fd801f6fb1b0e686153953d188bd538cfae2f0eb6c8f74ee97a27900da9ad3
+-checkpoints/multimodal/20261016_distilbert_meanpool_clip_frozen_seed43/best.pt,multimodal,multimodal 2026-10-16,20261016_distilbert_meanpool_clip_frozen_seed43,distilbert_meanpool_clip_frozen,43,28,0.524663,text+image,hidden 512 dropout 0.2,0.001,0.0001,787970,features/distilbert_mean_pooling,features/20261006_code_fixes_validation_v2,3155263,ce7433295332c6ead926b33ead52191c37cbb57a3d8eca34353b78767e33dedb
+-checkpoints/multimodal/20261016_distilbert_meanpool_clip_frozen_seed44/best.pt,multimodal,multimodal 2026-10-16,20261016_distilbert_meanpool_clip_frozen_seed44,distilbert_meanpool_clip_frozen,44,23,0.528159,text+image,hidden 512 dropout 0.2,0.001,0.0001,787970,features/distilbert_mean_pooling,features/20261006_code_fixes_validation_v2,3155263,db2575799ca6081684f678d5fe62589994203e74edb9ffc27146f2d6f102c2a4
+-checkpoints/multimodal/20261018_overfit_linear_fusion_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_linear_fusion_seed42,distilbert_clip_frozen_linear,42,25,0.515344,text+image,hidden 0 dropout 0.0,0.001,0.0001,3074,,,15309,cefb811ee3b6d62ae2457ba01d86505bf00473c1e7aee151814032eb23af9b99
+-checkpoints/multimodal/20261018_overfit_linear_fusion_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_linear_fusion_seed43,distilbert_clip_frozen_linear,43,26,0.519715,text+image,hidden 0 dropout 0.0,0.001,0.0001,3074,,,15309,a3292a7473700e187a324b4dd93093797af7737b3bca827f675e7998502fa6ae
+-checkpoints/multimodal/20261018_overfit_linear_fusion_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_linear_fusion_seed44,distilbert_clip_frozen_linear,44,26,0.516967,text+image,hidden 0 dropout 0.0,0.001,0.0001,3074,,,15309,aec41afe4715cdffd3356fffda59a62cf1479e1971ccf6bf152b682144290043
+-checkpoints/multimodal/20261018_overfit_linear_image_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_linear_image_seed42,clip_frozen_mlp_image_only_linear,42,20,0.528922,image,hidden 0 dropout 0.0,0.001,0.0001,1538,,,9101,959f97aaa0329823204d489b9b153aa4da37b64a0fc2de949ad2850eb7a67fd5
+-checkpoints/multimodal/20261018_overfit_linear_image_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_linear_image_seed43,clip_frozen_mlp_image_only_linear,43,28,0.523505,image,hidden 0 dropout 0.0,0.001,0.0001,1538,,,9101,d292601ab0c20b67fa614c50e9d9b787c3ad4988016c4f94df8d52fa08011597
+-checkpoints/multimodal/20261018_overfit_linear_image_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_linear_image_seed44,clip_frozen_mlp_image_only_linear,44,26,0.522506,image,hidden 0 dropout 0.0,0.001,0.0001,1538,,,9101,a177695fd8aded1f6fa930ae849fd179df7f1019bd7b6edbe4aec8e4e39815bb
+-checkpoints/multimodal/20261018_overfit_mlp128_fusion_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp128_fusion_seed42,distilbert_clip_frozen_mlp128,42,30,0.527861,text+image,hidden 128 dropout 0.2,0.001,0.0001,196994,,,791423,fe2221eb5be1138ff9e1747289bf42d9d70dfbb0bb81a6e40ed400e7b9cd7280
+-checkpoints/multimodal/20261018_overfit_mlp128_fusion_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp128_fusion_seed43,distilbert_clip_frozen_mlp128,43,24,0.520897,text+image,hidden 128 dropout 0.2,0.001,0.0001,196994,,,791423,c103c7b597408263edb6b5adbd5bb68a0b4ae26ad1027a23ee55acde281fed01
+-checkpoints/multimodal/20261018_overfit_mlp128_fusion_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp128_fusion_seed44,distilbert_clip_frozen_mlp128,44,28,0.518602,text+image,hidden 128 dropout 0.2,0.001,0.0001,196994,,,791423,842e391a208d78128dd4d3c633c63b5dd7f50f314fceeaf3b481a7965c1bb9a5
+-checkpoints/multimodal/20261018_overfit_mlp128_image_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp128_image_seed42,clip_frozen_mlp_image_only_mlp128,42,25,0.553941,image,hidden 128 dropout 0.2,0.001,0.0001,98690,,,398207,ac0bf77a4739c9161cbf833cf93bac28044d1c83fcbf5632a90261e284bb9065
+-checkpoints/multimodal/20261018_overfit_mlp128_image_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp128_image_seed43,clip_frozen_mlp_image_only_mlp128,43,25,0.565886,image,hidden 128 dropout 0.2,0.001,0.0001,98690,,,398207,6c5129786ce6e6d03b13761b97e65813418c20dadf70af2e745b7d062d95d42c
+-checkpoints/multimodal/20261018_overfit_mlp128_image_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp128_image_seed44,clip_frozen_mlp_image_only_mlp128,44,11,0.543672,image,hidden 128 dropout 0.2,0.001,0.0001,98690,,,398207,47cbaf867a6973e18365c7f6d84cd860f187f259319dfbdfa8d3aff9f3292221
+-checkpoints/multimodal/20261018_overfit_mlp256_fusion_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp256_fusion_seed42,distilbert_clip_frozen_mlp256,42,20,0.53699,text+image,hidden 256 dropout 0.2,0.001,0.0001,393986,,,1579391,c4e2c242a0956d6566266b2dca83753e4c2abddceea0f12e63a38b5bc3054648
+-checkpoints/multimodal/20261018_overfit_mlp256_fusion_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp256_fusion_seed43,distilbert_clip_frozen_mlp256,43,30,0.528275,text+image,hidden 256 dropout 0.2,0.001,0.0001,393986,,,1579391,1dd71d4927105484b39cbe81a697f9ac4e3b47e78d7ba9b56c5e2a94f32fb2d9
+-checkpoints/multimodal/20261018_overfit_mlp256_fusion_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp256_fusion_seed44,distilbert_clip_frozen_mlp256,44,24,0.522343,text+image,hidden 256 dropout 0.2,0.001,0.0001,393986,,,1579391,412ba361bb61cfd4f97b2d83cee2d3ad1bd85c653e25ea618b3aeda0eedeedbf
+-checkpoints/multimodal/20261018_overfit_mlp256_image_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp256_image_seed42,clip_frozen_mlp_image_only_mlp256,42,21,0.553412,image,hidden 256 dropout 0.2,0.001,0.0001,197378,,,792959,ed84d35166bcc6b5ceb2be1b0356a3d59ba1560c7216409fdbaad3fb73ac6f20
+-checkpoints/multimodal/20261018_overfit_mlp256_image_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp256_image_seed43,clip_frozen_mlp_image_only_mlp256,43,21,0.552665,image,hidden 256 dropout 0.2,0.001,0.0001,197378,,,792959,8451f55488539465e4dba59c503e170e1262a02d11d781a123a63741fd3a2593
+-checkpoints/multimodal/20261018_overfit_mlp256_image_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp256_image_seed44,clip_frozen_mlp_image_only_mlp256,44,16,0.552741,image,hidden 256 dropout 0.2,0.001,0.0001,197378,,,792959,3f288bdc44e5578a6059b0d3851d538f86c2b6e90fb6c1bd3ab8f42a545a95d5
+-checkpoints/multimodal/20261018_overfit_mlp512_dropout0.5_fusion_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_dropout0.5_fusion_seed42,distilbert_clip_frozen_mlp512_dropout0.5,42,12,0.534674,text+image,hidden 512 dropout 0.5,0.001,0.0001,787970,,,3155327,d7caad8698d0e2a90ca50b8dbadcbfd1b506c1bb12d6c22f7ad102b5dd3564b2
+-checkpoints/multimodal/20261018_overfit_mlp512_dropout0.5_fusion_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_dropout0.5_fusion_seed43,distilbert_clip_frozen_mlp512_dropout0.5,43,28,0.526388,text+image,hidden 512 dropout 0.5,0.001,0.0001,787970,,,3155327,b73f30935a835772cdb6c5dee5c7f15256825b26cc844a23c81f9c25f88ab234
+-checkpoints/multimodal/20261018_overfit_mlp512_dropout0.5_fusion_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_dropout0.5_fusion_seed44,distilbert_clip_frozen_mlp512_dropout0.5,44,30,0.522362,text+image,hidden 512 dropout 0.5,0.001,0.0001,787970,,,3155327,6cb4c0297ec534f193396a6efb1d9f255f004318905a0fd0d541de84b9521a4f
+-checkpoints/multimodal/20261018_overfit_mlp512_dropout0.5_image_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_dropout0.5_image_seed42,clip_frozen_mlp_image_only_mlp512_dropout0.5,42,27,0.556363,image,hidden 512 dropout 0.5,0.001,0.0001,394754,,,1582463,784b1189162cbf75831257646b511db845644ed4cfb115cfa8f2660efc6ba17b
+-checkpoints/multimodal/20261018_overfit_mlp512_dropout0.5_image_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_dropout0.5_image_seed43,clip_frozen_mlp_image_only_mlp512_dropout0.5,43,30,0.551002,image,hidden 512 dropout 0.5,0.001,0.0001,394754,,,1582463,8d1328d107093cc56a5a9a68fd8cfae5324ca34a0b28024ab9d04a6f3287b29d
+-checkpoints/multimodal/20261018_overfit_mlp512_dropout0.5_image_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_dropout0.5_image_seed44,clip_frozen_mlp_image_only_mlp512_dropout0.5,44,27,0.555333,image,hidden 512 dropout 0.5,0.001,0.0001,394754,,,1582463,d07996a44559d2d1e6a732831f073f8ba36974d1833cacbe7c3c26911f108375
+-checkpoints/multimodal/20261018_overfit_mlp512_lr1e-4_fusion_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_lr1e-4_fusion_seed42,distilbert_clip_frozen_mlp512_lr1e-4,42,20,0.529317,text+image,hidden 512 dropout 0.2,0.0001,0.0001,787970,,,3155327,83f135eb946ce70bbae953e8b271505e1d0887b5652f73fe3a51d97af2217011
+-checkpoints/multimodal/20261018_overfit_mlp512_lr1e-4_fusion_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_lr1e-4_fusion_seed43,distilbert_clip_frozen_mlp512_lr1e-4,43,21,0.521632,text+image,hidden 512 dropout 0.2,0.0001,0.0001,787970,,,3155327,405b593ed87d8129b01f65512dbffe6550dbe2e697055d07c51c463789db2ba1
+-checkpoints/multimodal/20261018_overfit_mlp512_lr1e-4_fusion_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_lr1e-4_fusion_seed44,distilbert_clip_frozen_mlp512_lr1e-4,44,25,0.525008,text+image,hidden 512 dropout 0.2,0.0001,0.0001,787970,,,3155327,704675a4457fdc99664f2901e23be393942657b5ec5073fc9287dd20e62742c5
+-checkpoints/multimodal/20261018_overfit_mlp512_lr1e-4_image_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_lr1e-4_image_seed42,clip_frozen_mlp_image_only_mlp512_lr1e-4,42,17,0.528273,image,hidden 512 dropout 0.2,0.0001,0.0001,394754,,,1582463,90b7f00f5c225d63a66d98c7886ee37ece749d8de36c65e5bb8a243beab8550f
+-checkpoints/multimodal/20261018_overfit_mlp512_lr1e-4_image_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_lr1e-4_image_seed43,clip_frozen_mlp_image_only_mlp512_lr1e-4,43,16,0.531226,image,hidden 512 dropout 0.2,0.0001,0.0001,394754,,,1582463,44e6936a2c38a7d2cb974a57d44e8a3f70208f281bc25380f2f4bd1da22c8d1b
+-checkpoints/multimodal/20261018_overfit_mlp512_lr1e-4_image_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_lr1e-4_image_seed44,clip_frozen_mlp_image_only_mlp512_lr1e-4,44,20,0.534846,image,hidden 512 dropout 0.2,0.0001,0.0001,394754,,,1582463,e0ca05af45824ad943900a9a3dddf5bca2a6c9bdca9a952f0d5d68cfca2a7936
+-checkpoints/multimodal/20261018_overfit_mlp512_wd1e-2_fusion_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_wd1e-2_fusion_seed42,distilbert_clip_frozen_mlp512_wd1e-2,42,1,0.522086,text+image,hidden 512 dropout 0.2,0.001,0.01,787970,,,3155327,bb23532774ed676f080cf0199de625925c334bc5674ff7c4ade0384d492ac057
+-checkpoints/multimodal/20261018_overfit_mlp512_wd1e-2_fusion_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_wd1e-2_fusion_seed43,distilbert_clip_frozen_mlp512_wd1e-2,43,28,0.531423,text+image,hidden 512 dropout 0.2,0.001,0.01,787970,,,3155327,15c5aaf6f6277ac356320601fb040030b7d46603b41e9167c039a84825d163bd
+-checkpoints/multimodal/20261018_overfit_mlp512_wd1e-2_fusion_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_wd1e-2_fusion_seed44,distilbert_clip_frozen_mlp512_wd1e-2,44,28,0.529523,text+image,hidden 512 dropout 0.2,0.001,0.01,787970,,,3155327,474ffc5b56fd5c4e34eb33ec7c8b18938fa0889132ad21acaf27aacb89933288
+-checkpoints/multimodal/20261018_overfit_mlp512_wd1e-2_image_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_wd1e-2_image_seed42,clip_frozen_mlp_image_only_mlp512_wd1e-2,42,26,0.580156,image,hidden 512 dropout 0.2,0.001,0.01,394754,,,1582463,a92109d8b88476b6e736803a0fc5a26d0262158ebb9c2518171d33e8860b0d5f
+-checkpoints/multimodal/20261018_overfit_mlp512_wd1e-2_image_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_wd1e-2_image_seed43,clip_frozen_mlp_image_only_mlp512_wd1e-2,43,16,0.560422,image,hidden 512 dropout 0.2,0.001,0.01,394754,,,1582463,85634550a5d4be69c641da0c818fb2294e884b14c4d58f3bf7de900e42396dcd
+-checkpoints/multimodal/20261018_overfit_mlp512_wd1e-2_image_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_wd1e-2_image_seed44,clip_frozen_mlp_image_only_mlp512_wd1e-2,44,19,0.557424,image,hidden 512 dropout 0.2,0.001,0.01,394754,,,1582463,dd8d53f47b79d86d782edb648149d4aa8b116effdc79d169c9e6b0440f6c12a7
+-checkpoints/multimodal/20261018_overfit_mlp64_fusion_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp64_fusion_seed42,distilbert_clip_frozen_mlp64,42,28,0.529863,text+image,hidden 64 dropout 0.2,0.001,0.0001,98498,,,397439,e2047870e11f5206fcd33b481534a24e2bbe8dccc3f4f5d67e685ff0263f0b9f
+-checkpoints/multimodal/20261018_overfit_mlp64_fusion_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp64_fusion_seed43,distilbert_clip_frozen_mlp64,43,15,0.517838,text+image,hidden 64 dropout 0.2,0.001,0.0001,98498,,,397439,99b60fc415848f8a77e8e8bd12879417a0f7078b536d01cfbfe8a7b6d5cf5040
+-checkpoints/multimodal/20261018_overfit_mlp64_fusion_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp64_fusion_seed44,distilbert_clip_frozen_mlp64,44,26,0.515266,text+image,hidden 64 dropout 0.2,0.001,0.0001,98498,,,397439,ed71f5738fb690b1cf7c48da99c791837134ee3cd463383773096021a6168d50
+-checkpoints/multimodal/20261018_overfit_mlp64_image_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp64_image_seed42,clip_frozen_mlp_image_only_mlp64,42,24,0.544684,image,hidden 64 dropout 0.2,0.001,0.0001,49346,,,200831,6efd0ed52f7cc13da726903cc81f90fa73a4179cfd387c1ebf2bfe4f83be7733
+-checkpoints/multimodal/20261018_overfit_mlp64_image_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp64_image_seed43,clip_frozen_mlp_image_only_mlp64,43,24,0.539567,image,hidden 64 dropout 0.2,0.001,0.0001,49346,,,200831,1859bd910cb4f57e1ae3ceabda780a0da1c498ff7bb09d2f6f38fe437305d464
+-checkpoints/multimodal/20261018_overfit_mlp64_image_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp64_image_seed44,clip_frozen_mlp_image_only_mlp64,44,10,0.541495,image,hidden 64 dropout 0.2,0.001,0.0001,49346,,,200831,bdfef32c138e1c19c5d1ed69c526e8231ea7835c448d4538ce2d51ba08eb674d
++path,task,group,run_id,model_name,seed,best_epoch,val_macro_f1,modalities,head,lr,weight_decay,parameters,text_features_dir,image_features_dir,bytes,sha256
++checkpoints/image/20261001_clip_vitb32_seed42/best.pt,image,image group (shipped in Git),20261001_clip_vitb32_seed42,clip_vitb32_frozen,42,7,0.526579,image,linear,0.001,0.0001,1538,,,8589,66fcccc2c533bab39a2c1f6138723f3e848745e141ec381d3258199f6ff3be3f
++checkpoints/image/20261001_clip_vitb32_seed42_zhihan_rtx3080/best.pt,image,image group (shipped in Git),20261001_clip_vitb32_seed42_zhihan_rtx3080,clip_vitb32_frozen,42,7,0.527606,image,linear,0.001,0.0001,1538,,,8589,413cc9e91d29e299bbc1358ee9bf4f88f004ce710fb605e63a1b18019d023a82
++checkpoints/image/20261006_code_fixes_validation_v2/best.pt,image,image group (shipped in Git),20261006_code_fixes_validation_v2,clip_vitb32_frozen,42,7,0.527606,image,linear,0.001,0.0001,1538,,,8589,413cc9e91d29e299bbc1358ee9bf4f88f004ce710fb605e63a1b18019d023a82
++checkpoints/multimodal/20261016_clip_frozen_mlp_image_only_seed42/best.pt,multimodal,multimodal 2026-10-16,20261016_clip_frozen_mlp_image_only_seed42,clip_frozen_mlp_image_only,42,29,0.556835,image,hidden 512 dropout 0.2,0.001,0.0001,394754,,features/20261006_code_fixes_validation_v2,1582335,fb1909a059a2a17f382528b42451ff42572ff3efb5eb0752eb4c0e8eed10b21d
++checkpoints/multimodal/20261016_clip_frozen_mlp_image_only_seed43/best.pt,multimodal,multimodal 2026-10-16,20261016_clip_frozen_mlp_image_only_seed43,clip_frozen_mlp_image_only,43,23,0.535171,image,hidden 512 dropout 0.2,0.001,0.0001,394754,,features/20261006_code_fixes_validation_v2,1582335,9e915f57e95308625f45e0098606b39396f8a376583c506b9aa40fae6e5a248c
++checkpoints/multimodal/20261016_clip_frozen_mlp_image_only_seed44/best.pt,multimodal,multimodal 2026-10-16,20261016_clip_frozen_mlp_image_only_seed44,clip_frozen_mlp_image_only,44,19,0.545703,image,hidden 512 dropout 0.2,0.001,0.0001,394754,,features/20261006_code_fixes_validation_v2,1582335,d5ec6d5bb8e88fb7e73ffe9a5c2535359719c5d24117ea262bebb17fe083ca4d
++checkpoints/multimodal/20261016_distilbert_clip_frozen_seed43/best.pt,multimodal,multimodal 2026-10-16,20261016_distilbert_clip_frozen_seed43,distilbert_clip_frozen,43,27,0.531473,text+image,hidden 512 dropout 0.2,0.001,0.0001,787970,features/distilbert_first_token,features/20261006_code_fixes_validation_v2,3155263,783322d1742313555c346a64253474d37a6ed2fd46198f6faf874fcb6ba25e68
++checkpoints/multimodal/20261016_distilbert_clip_frozen_seed44/best.pt,multimodal,multimodal 2026-10-16,20261016_distilbert_clip_frozen_seed44,distilbert_clip_frozen,44,21,0.544058,text+image,hidden 512 dropout 0.2,0.001,0.0001,787970,features/distilbert_first_token,features/20261006_code_fixes_validation_v2,3155263,0c11007c0b8c8e9f36e2eae6495810763d4c2b73317c8037822d2c8b5445d746
++checkpoints/multimodal/20261016_distilbert_clip_seed42/best.pt,multimodal,multimodal 2026-10-16,20261016_distilbert_clip_seed42,distilbert_clip_frozen,42,25,0.533637,text+image,hidden 512 dropout 0.2,0.001,0.0001,787970,features/distilbert_first_token,features/20261006_code_fixes_validation_v2,3155263,b4020a38ca8bdfab07bfd8cedb744f8c5f83a86f5f065337bc6d9aee74246126
++checkpoints/multimodal/20261016_distilbert_clip_seed42_reproduction_cpu/best.pt,multimodal,multimodal 2026-10-16,20261016_distilbert_clip_seed42_reproduction_cpu,distilbert_clip_frozen,42,29,0.543468,text+image,hidden 512 dropout 0.2,0.001,0.0001,787970,features/reproduction_distilbert_first_token,features/clip_vitb32_pooler_cpu,3155263,9f2640780438b040ea531f8f30815369f9661072cf0a0e1061312607f765aaf2
++checkpoints/multimodal/20261016_distilbert_clip_seed42_rerun_same_inputs/best.pt,multimodal,multimodal 2026-10-16,20261016_distilbert_clip_seed42_rerun_same_inputs,distilbert_clip_frozen,42,25,0.533637,text+image,hidden 512 dropout 0.2,0.001,0.0001,787970,features/distilbert_first_token,features/20261006_code_fixes_validation_v2,3155263,b4020a38ca8bdfab07bfd8cedb744f8c5f83a86f5f065337bc6d9aee74246126
++checkpoints/multimodal/20261016_distilbert_frozen_mlp_text_only_seed42/best.pt,multimodal,multimodal 2026-10-16,20261016_distilbert_frozen_mlp_text_only_seed42,distilbert_frozen_mlp_text_only,42,9,0.490285,text,hidden 512 dropout 0.2,0.001,0.0001,394754,features/distilbert_first_token,,1582335,8589759247e39864cd0c6a80c7c0aa68fb020c3d0e448e8d1a2f7997f8c13b12
++checkpoints/multimodal/20261016_distilbert_frozen_mlp_text_only_seed43/best.pt,multimodal,multimodal 2026-10-16,20261016_distilbert_frozen_mlp_text_only_seed43,distilbert_frozen_mlp_text_only,43,12,0.477149,text,hidden 512 dropout 0.2,0.001,0.0001,394754,features/distilbert_first_token,,1582335,0768ad1c855f35f309b1fae75705e12560e7b70f13a3171f4a1ef8c36b4d505f
++checkpoints/multimodal/20261016_distilbert_frozen_mlp_text_only_seed44/best.pt,multimodal,multimodal 2026-10-16,20261016_distilbert_frozen_mlp_text_only_seed44,distilbert_frozen_mlp_text_only,44,11,0.491201,text,hidden 512 dropout 0.2,0.001,0.0001,394754,features/distilbert_first_token,,1582335,d3a1c5e646206c65d9678a8a647373685f0c1f40410996f8f90663f40124aeee
++checkpoints/multimodal/20261016_distilbert_meanpool_clip_frozen_seed42/best.pt,multimodal,multimodal 2026-10-16,20261016_distilbert_meanpool_clip_frozen_seed42,distilbert_meanpool_clip_frozen,42,29,0.531094,text+image,hidden 512 dropout 0.2,0.001,0.0001,787970,features/distilbert_mean_pooling,features/20261006_code_fixes_validation_v2,3155263,32fd801f6fb1b0e686153953d188bd538cfae2f0eb6c8f74ee97a27900da9ad3
++checkpoints/multimodal/20261016_distilbert_meanpool_clip_frozen_seed43/best.pt,multimodal,multimodal 2026-10-16,20261016_distilbert_meanpool_clip_frozen_seed43,distilbert_meanpool_clip_frozen,43,28,0.524663,text+image,hidden 512 dropout 0.2,0.001,0.0001,787970,features/distilbert_mean_pooling,features/20261006_code_fixes_validation_v2,3155263,ce7433295332c6ead926b33ead52191c37cbb57a3d8eca34353b78767e33dedb
++checkpoints/multimodal/20261016_distilbert_meanpool_clip_frozen_seed44/best.pt,multimodal,multimodal 2026-10-16,20261016_distilbert_meanpool_clip_frozen_seed44,distilbert_meanpool_clip_frozen,44,23,0.528159,text+image,hidden 512 dropout 0.2,0.001,0.0001,787970,features/distilbert_mean_pooling,features/20261006_code_fixes_validation_v2,3155263,db2575799ca6081684f678d5fe62589994203e74edb9ffc27146f2d6f102c2a4
++checkpoints/multimodal/20261018_overfit_linear_fusion_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_linear_fusion_seed42,distilbert_clip_frozen_linear,42,25,0.515344,text+image,hidden 0 dropout 0.0,0.001,0.0001,3074,,,15309,cefb811ee3b6d62ae2457ba01d86505bf00473c1e7aee151814032eb23af9b99
++checkpoints/multimodal/20261018_overfit_linear_fusion_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_linear_fusion_seed43,distilbert_clip_frozen_linear,43,26,0.519715,text+image,hidden 0 dropout 0.0,0.001,0.0001,3074,,,15309,a3292a7473700e187a324b4dd93093797af7737b3bca827f675e7998502fa6ae
++checkpoints/multimodal/20261018_overfit_linear_fusion_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_linear_fusion_seed44,distilbert_clip_frozen_linear,44,26,0.516967,text+image,hidden 0 dropout 0.0,0.001,0.0001,3074,,,15309,aec41afe4715cdffd3356fffda59a62cf1479e1971ccf6bf152b682144290043
++checkpoints/multimodal/20261018_overfit_linear_image_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_linear_image_seed42,clip_frozen_mlp_image_only_linear,42,20,0.528922,image,hidden 0 dropout 0.0,0.001,0.0001,1538,,,9101,959f97aaa0329823204d489b9b153aa4da37b64a0fc2de949ad2850eb7a67fd5
++checkpoints/multimodal/20261018_overfit_linear_image_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_linear_image_seed43,clip_frozen_mlp_image_only_linear,43,28,0.523505,image,hidden 0 dropout 0.0,0.001,0.0001,1538,,,9101,d292601ab0c20b67fa614c50e9d9b787c3ad4988016c4f94df8d52fa08011597
++checkpoints/multimodal/20261018_overfit_linear_image_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_linear_image_seed44,clip_frozen_mlp_image_only_linear,44,26,0.522506,image,hidden 0 dropout 0.0,0.001,0.0001,1538,,,9101,a177695fd8aded1f6fa930ae849fd179df7f1019bd7b6edbe4aec8e4e39815bb
++checkpoints/multimodal/20261018_overfit_mlp128_fusion_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp128_fusion_seed42,distilbert_clip_frozen_mlp128,42,30,0.527861,text+image,hidden 128 dropout 0.2,0.001,0.0001,196994,,,791423,fe2221eb5be1138ff9e1747289bf42d9d70dfbb0bb81a6e40ed400e7b9cd7280
++checkpoints/multimodal/20261018_overfit_mlp128_fusion_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp128_fusion_seed43,distilbert_clip_frozen_mlp128,43,24,0.520897,text+image,hidden 128 dropout 0.2,0.001,0.0001,196994,,,791423,c103c7b597408263edb6b5adbd5bb68a0b4ae26ad1027a23ee55acde281fed01
++checkpoints/multimodal/20261018_overfit_mlp128_fusion_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp128_fusion_seed44,distilbert_clip_frozen_mlp128,44,28,0.518602,text+image,hidden 128 dropout 0.2,0.001,0.0001,196994,,,791423,842e391a208d78128dd4d3c633c63b5dd7f50f314fceeaf3b481a7965c1bb9a5
++checkpoints/multimodal/20261018_overfit_mlp128_image_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp128_image_seed42,clip_frozen_mlp_image_only_mlp128,42,25,0.553941,image,hidden 128 dropout 0.2,0.001,0.0001,98690,,,398207,ac0bf77a4739c9161cbf833cf93bac28044d1c83fcbf5632a90261e284bb9065
++checkpoints/multimodal/20261018_overfit_mlp128_image_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp128_image_seed43,clip_frozen_mlp_image_only_mlp128,43,25,0.565886,image,hidden 128 dropout 0.2,0.001,0.0001,98690,,,398207,6c5129786ce6e6d03b13761b97e65813418c20dadf70af2e745b7d062d95d42c
++checkpoints/multimodal/20261018_overfit_mlp128_image_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp128_image_seed44,clip_frozen_mlp_image_only_mlp128,44,11,0.543672,image,hidden 128 dropout 0.2,0.001,0.0001,98690,,,398207,47cbaf867a6973e18365c7f6d84cd860f187f259319dfbdfa8d3aff9f3292221
++checkpoints/multimodal/20261018_overfit_mlp256_fusion_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp256_fusion_seed42,distilbert_clip_frozen_mlp256,42,20,0.53699,text+image,hidden 256 dropout 0.2,0.001,0.0001,393986,,,1579391,c4e2c242a0956d6566266b2dca83753e4c2abddceea0f12e63a38b5bc3054648
++checkpoints/multimodal/20261018_overfit_mlp256_fusion_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp256_fusion_seed43,distilbert_clip_frozen_mlp256,43,30,0.528275,text+image,hidden 256 dropout 0.2,0.001,0.0001,393986,,,1579391,1dd71d4927105484b39cbe81a697f9ac4e3b47e78d7ba9b56c5e2a94f32fb2d9
++checkpoints/multimodal/20261018_overfit_mlp256_fusion_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp256_fusion_seed44,distilbert_clip_frozen_mlp256,44,24,0.522343,text+image,hidden 256 dropout 0.2,0.001,0.0001,393986,,,1579391,412ba361bb61cfd4f97b2d83cee2d3ad1bd85c653e25ea618b3aeda0eedeedbf
++checkpoints/multimodal/20261018_overfit_mlp256_image_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp256_image_seed42,clip_frozen_mlp_image_only_mlp256,42,21,0.553412,image,hidden 256 dropout 0.2,0.001,0.0001,197378,,,792959,ed84d35166bcc6b5ceb2be1b0356a3d59ba1560c7216409fdbaad3fb73ac6f20
++checkpoints/multimodal/20261018_overfit_mlp256_image_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp256_image_seed43,clip_frozen_mlp_image_only_mlp256,43,21,0.552665,image,hidden 256 dropout 0.2,0.001,0.0001,197378,,,792959,8451f55488539465e4dba59c503e170e1262a02d11d781a123a63741fd3a2593
++checkpoints/multimodal/20261018_overfit_mlp256_image_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp256_image_seed44,clip_frozen_mlp_image_only_mlp256,44,16,0.552741,image,hidden 256 dropout 0.2,0.001,0.0001,197378,,,792959,3f288bdc44e5578a6059b0d3851d538f86c2b6e90fb6c1bd3ab8f42a545a95d5
++checkpoints/multimodal/20261018_overfit_mlp512_dropout0.5_fusion_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_dropout0.5_fusion_seed42,distilbert_clip_frozen_mlp512_dropout0.5,42,12,0.534674,text+image,hidden 512 dropout 0.5,0.001,0.0001,787970,,,3155327,d7caad8698d0e2a90ca50b8dbadcbfd1b506c1bb12d6c22f7ad102b5dd3564b2
++checkpoints/multimodal/20261018_overfit_mlp512_dropout0.5_fusion_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_dropout0.5_fusion_seed43,distilbert_clip_frozen_mlp512_dropout0.5,43,28,0.526388,text+image,hidden 512 dropout 0.5,0.001,0.0001,787970,,,3155327,b73f30935a835772cdb6c5dee5c7f15256825b26cc844a23c81f9c25f88ab234
++checkpoints/multimodal/20261018_overfit_mlp512_dropout0.5_fusion_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_dropout0.5_fusion_seed44,distilbert_clip_frozen_mlp512_dropout0.5,44,30,0.522362,text+image,hidden 512 dropout 0.5,0.001,0.0001,787970,,,3155327,6cb4c0297ec534f193396a6efb1d9f255f004318905a0fd0d541de84b9521a4f
++checkpoints/multimodal/20261018_overfit_mlp512_dropout0.5_image_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_dropout0.5_image_seed42,clip_frozen_mlp_image_only_mlp512_dropout0.5,42,27,0.556363,image,hidden 512 dropout 0.5,0.001,0.0001,394754,,,1582463,784b1189162cbf75831257646b511db845644ed4cfb115cfa8f2660efc6ba17b
++checkpoints/multimodal/20261018_overfit_mlp512_dropout0.5_image_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_dropout0.5_image_seed43,clip_frozen_mlp_image_only_mlp512_dropout0.5,43,30,0.551002,image,hidden 512 dropout 0.5,0.001,0.0001,394754,,,1582463,8d1328d107093cc56a5a9a68fd8cfae5324ca34a0b28024ab9d04a6f3287b29d
++checkpoints/multimodal/20261018_overfit_mlp512_dropout0.5_image_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_dropout0.5_image_seed44,clip_frozen_mlp_image_only_mlp512_dropout0.5,44,27,0.555333,image,hidden 512 dropout 0.5,0.001,0.0001,394754,,,1582463,d07996a44559d2d1e6a732831f073f8ba36974d1833cacbe7c3c26911f108375
++checkpoints/multimodal/20261018_overfit_mlp512_lr1e-4_fusion_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_lr1e-4_fusion_seed42,distilbert_clip_frozen_mlp512_lr1e-4,42,20,0.529317,text+image,hidden 512 dropout 0.2,0.0001,0.0001,787970,,,3155327,83f135eb946ce70bbae953e8b271505e1d0887b5652f73fe3a51d97af2217011
++checkpoints/multimodal/20261018_overfit_mlp512_lr1e-4_fusion_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_lr1e-4_fusion_seed43,distilbert_clip_frozen_mlp512_lr1e-4,43,21,0.521632,text+image,hidden 512 dropout 0.2,0.0001,0.0001,787970,,,3155327,405b593ed87d8129b01f65512dbffe6550dbe2e697055d07c51c463789db2ba1
++checkpoints/multimodal/20261018_overfit_mlp512_lr1e-4_fusion_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_lr1e-4_fusion_seed44,distilbert_clip_frozen_mlp512_lr1e-4,44,25,0.525008,text+image,hidden 512 dropout 0.2,0.0001,0.0001,787970,,,3155327,704675a4457fdc99664f2901e23be393942657b5ec5073fc9287dd20e62742c5
++checkpoints/multimodal/20261018_overfit_mlp512_lr1e-4_image_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_lr1e-4_image_seed42,clip_frozen_mlp_image_only_mlp512_lr1e-4,42,17,0.528273,image,hidden 512 dropout 0.2,0.0001,0.0001,394754,,,1582463,90b7f00f5c225d63a66d98c7886ee37ece749d8de36c65e5bb8a243beab8550f
++checkpoints/multimodal/20261018_overfit_mlp512_lr1e-4_image_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_lr1e-4_image_seed43,clip_frozen_mlp_image_only_mlp512_lr1e-4,43,16,0.531226,image,hidden 512 dropout 0.2,0.0001,0.0001,394754,,,1582463,44e6936a2c38a7d2cb974a57d44e8a3f70208f281bc25380f2f4bd1da22c8d1b
++checkpoints/multimodal/20261018_overfit_mlp512_lr1e-4_image_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_lr1e-4_image_seed44,clip_frozen_mlp_image_only_mlp512_lr1e-4,44,20,0.534846,image,hidden 512 dropout 0.2,0.0001,0.0001,394754,,,1582463,e0ca05af45824ad943900a9a3dddf5bca2a6c9bdca9a952f0d5d68cfca2a7936
++checkpoints/multimodal/20261018_overfit_mlp512_wd1e-2_fusion_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_wd1e-2_fusion_seed42,distilbert_clip_frozen_mlp512_wd1e-2,42,1,0.522086,text+image,hidden 512 dropout 0.2,0.001,0.01,787970,,,3155327,bb23532774ed676f080cf0199de625925c334bc5674ff7c4ade0384d492ac057
++checkpoints/multimodal/20261018_overfit_mlp512_wd1e-2_fusion_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_wd1e-2_fusion_seed43,distilbert_clip_frozen_mlp512_wd1e-2,43,28,0.531423,text+image,hidden 512 dropout 0.2,0.001,0.01,787970,,,3155327,15c5aaf6f6277ac356320601fb040030b7d46603b41e9167c039a84825d163bd
++checkpoints/multimodal/20261018_overfit_mlp512_wd1e-2_fusion_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_wd1e-2_fusion_seed44,distilbert_clip_frozen_mlp512_wd1e-2,44,28,0.529523,text+image,hidden 512 dropout 0.2,0.001,0.01,787970,,,3155327,474ffc5b56fd5c4e34eb33ec7c8b18938fa0889132ad21acaf27aacb89933288
++checkpoints/multimodal/20261018_overfit_mlp512_wd1e-2_image_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_wd1e-2_image_seed42,clip_frozen_mlp_image_only_mlp512_wd1e-2,42,26,0.580156,image,hidden 512 dropout 0.2,0.001,0.01,394754,,,1582463,a92109d8b88476b6e736803a0fc5a26d0262158ebb9c2518171d33e8860b0d5f
++checkpoints/multimodal/20261018_overfit_mlp512_wd1e-2_image_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_wd1e-2_image_seed43,clip_frozen_mlp_image_only_mlp512_wd1e-2,43,16,0.560422,image,hidden 512 dropout 0.2,0.001,0.01,394754,,,1582463,85634550a5d4be69c641da0c818fb2294e884b14c4d58f3bf7de900e42396dcd
++checkpoints/multimodal/20261018_overfit_mlp512_wd1e-2_image_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp512_wd1e-2_image_seed44,clip_frozen_mlp_image_only_mlp512_wd1e-2,44,19,0.557424,image,hidden 512 dropout 0.2,0.001,0.01,394754,,,1582463,dd8d53f47b79d86d782edb648149d4aa8b116effdc79d169c9e6b0440f6c12a7
++checkpoints/multimodal/20261018_overfit_mlp64_fusion_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp64_fusion_seed42,distilbert_clip_frozen_mlp64,42,28,0.529863,text+image,hidden 64 dropout 0.2,0.001,0.0001,98498,,,397439,e2047870e11f5206fcd33b481534a24e2bbe8dccc3f4f5d67e685ff0263f0b9f
++checkpoints/multimodal/20261018_overfit_mlp64_fusion_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp64_fusion_seed43,distilbert_clip_frozen_mlp64,43,15,0.517838,text+image,hidden 64 dropout 0.2,0.001,0.0001,98498,,,397439,99b60fc415848f8a77e8e8bd12879417a0f7078b536d01cfbfe8a7b6d5cf5040
++checkpoints/multimodal/20261018_overfit_mlp64_fusion_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp64_fusion_seed44,distilbert_clip_frozen_mlp64,44,26,0.515266,text+image,hidden 64 dropout 0.2,0.001,0.0001,98498,,,397439,ed71f5738fb690b1cf7c48da99c791837134ee3cd463383773096021a6168d50
++checkpoints/multimodal/20261018_overfit_mlp64_image_seed42/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp64_image_seed42,clip_frozen_mlp_image_only_mlp64,42,24,0.544684,image,hidden 64 dropout 0.2,0.001,0.0001,49346,,,200831,6efd0ed52f7cc13da726903cc81f90fa73a4179cfd387c1ebf2bfe4f83be7733
++checkpoints/multimodal/20261018_overfit_mlp64_image_seed43/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp64_image_seed43,clip_frozen_mlp_image_only_mlp64,43,24,0.539567,image,hidden 64 dropout 0.2,0.001,0.0001,49346,,,200831,1859bd910cb4f57e1ae3ceabda780a0da1c498ff7bb09d2f6f38fe437305d464
++checkpoints/multimodal/20261018_overfit_mlp64_image_seed44/best.pt,multimodal,overfitting diagnostic 2026-10-18,20261018_overfit_mlp64_image_seed44,clip_frozen_mlp_image_only_mlp64,44,10,0.541495,image,hidden 64 dropout 0.2,0.001,0.0001,49346,,,200831,bdfef32c138e1c19c5d1ed69c526e8231ea7835c448d4538ce2d51ba08eb674d
+diff --git a/docs/design.md b/docs/design.md
+index 43c5f3b..17cc067 100644
+--- a/docs/design.md
++++ b/docs/design.md
+@@ -16,7 +16,7 @@ decision log is [decisions.md](decisions.md); run history is [experiment_log.md]
+ | Goal | One code path from cached features (training) to raw inputs (serving), checked numerically. |
+ | Goal | Everything runs on CPU; GPU is optional (feature extraction is the only expensive step). |
+ | Non-goal | Fine-tuning the encoders, tuning the threshold, or choosing anything on Test (team README 3.2). |
+-| Non-goal | The Text Group's fine-tuned DistilBERT classifier (separate branch). |
++| Non-goal | The Text Group's fine-tuned DistilBERT classifier (maintained separately by the Text Group). |
+ 
+ ## 2. Data contract / 数据约定
+ 
+diff --git a/docs/multimodal_baseline.md b/docs/multimodal_baseline.md
+index 0cb2439..0bd286a 100644
+--- a/docs/multimodal_baseline.md
++++ b/docs/multimodal_baseline.md
+@@ -33,9 +33,9 @@ Results, reproduction evidence and the manual review are in [Team_Review/multimo
+ 
+ ## Image features / 图片特征
+ 
+-The baseline uses the image group's reference cache `Image_Features_CLIP_ViTB32_20261006.zip` (SHA-256 `7a02d46b…5662`, train + validation, 768-d `pooler_output`, CUDA). It has no test split. The same encoder was therefore re-run on CPU for train/validation/test (`data/processed/features/clip_vitb32_pooler_cpu`). Both caches agree to mean cosine 0.99997. The few larger gaps (38 images below 0.999, minimum 0.981) are explained by TF32 in the CUDA patch-embedding convolution. Emulating TF32 brings the six worst images to cosine 1.00000 and cuts the mean difference on 64 validation images from 1.7e-3 to 2.9e-5 ([test report](Multimodal_Test_Results.md)).
++The baseline uses the image group's reference cache `Image_Features_CLIP_ViTB32_20261006.zip` (SHA-256 `7a02d46b…5662`, train + validation, 768-d `pooler_output`, CUDA). It has no test split. The same encoder was therefore re-run on CPU for train/validation/test (`data/processed/features/clip_vitb32_pooler_cpu`). Both caches agree to mean cosine 0.99997. The few larger gaps (38 images below 0.999, minimum 0.981) are explained by TF32 in the CUDA patch-embedding convolution. Emulating TF32 brings the 10 worst train and 10 worst validation images to cosine ≥ 0.9999999 and cuts the mean difference on 64 validation images from 1.7e-3 to 2.9e-5 ([test report](Multimodal_Test_Results.md)).
+ 
+-基线使用图片组的参考缓存 `Image_Features_CLIP_ViTB32_20261006.zip`（SHA-256 `7a02d46b…5662`，train + validation，768 维 `pooler_output`，CUDA 提取），其中没有 test。因此在 CPU 上用同一编码器重新提取了 train/validation/test（`data/processed/features/clip_vitb32_pooler_cpu`）。两份缓存的平均余弦相似度为 0.99997；少数较大差异（38 张低于 0.999，最小 0.981）可由 CUDA patch-embedding 卷积的 TF32 解释：模拟 TF32 后，最差的 6 张余弦达到 1.00000，64 张 validation 图片的平均差从 1.7e-3 降到 2.9e-5（[检测报告](Multimodal_Test_Results.md)）。
++基线使用图片组的参考缓存 `Image_Features_CLIP_ViTB32_20261006.zip`（SHA-256 `7a02d46b…5662`，train + validation，768 维 `pooler_output`，CUDA 提取），其中没有 test。因此在 CPU 上用同一编码器重新提取了 train/validation/test（`data/processed/features/clip_vitb32_pooler_cpu`）。两份缓存的平均余弦相似度为 0.99997；少数较大差异（38 张低于 0.999，最小 0.981）可由 CUDA patch-embedding 卷积的 TF32 解释：模拟 TF32 后，train 与 validation 各自最差的 10 张图片余弦达到 ≥ 0.9999999，64 张 validation 图片的平均差从 1.7e-3 降到 2.9e-5（[检测报告](Multimodal_Test_Results.md)）。
+ 
+ ## Commands / 命令
+ 
+@@ -117,7 +117,7 @@ The default path loads the pinned Hub revisions. If `huggingface.co` is blocked,
+ | Encoder / 编码器 | Local copy used here / 本次使用的本地副本 | Check / 校验 |
+ |---|---|---|
+ | DistilBERT | Hugging Face's legacy S3 files `distilbert-base-uncased-{pytorch_model.bin,config.json,tokenizer.json}` + `bert-base-uncased-vocab.txt`, plus `tokenizer_config.json` `{"do_lower_case": true, "model_max_length": 512}` | weights SHA-256 `e60d7161…ea7c` (recorded in every cache `meta.json`); 66,362,880 parameters; all 100 encoder tensors load; MLM sanity check sensible |
+-| CLIP ViT-B/32 | OpenAI `ViT-B-32.pt`, converted by `scripts/convert_openai_clip_to_hf.py` | SHA-256 `40d36571…0af` = hash in OpenAI's official URL; with TF32 emulated, the six worst-matching images reach cosine 1.00000 against the image group's CUDA features |
++| CLIP ViT-B/32 | OpenAI `ViT-B-32.pt`, converted by `scripts/convert_openai_clip_to_hf.py` | SHA-256 `40d36571…0af` = hash in OpenAI's official URL; with TF32 emulated, the 10 worst-matching train and 10 worst validation images reach cosine ≥ 0.9999999 against the image group's CUDA features |
+ 
+ ## Files / 文件
+ 
+diff --git a/notebooks/eda.ipynb b/notebooks/eda.ipynb
+index 78acab3..dc2d1e2 100644
+--- a/notebooks/eda.ipynb
++++ b/notebooks/eda.ipynb
+@@ -1418,8 +1418,10 @@
+    "metadata": {},
+    "source": [
+     "High mean pairwise cosine = anisotropic features (all vectors point in similar directions),\n",
+-    "typical of a frozen `[CLS]` state; this is one reason the text-only head is weak\n",
+-    "(results report §8). / 平均余弦越高，特征越各向异性，冻结的 `[CLS]` 尤其明显。"
++    "typical of a frozen `[CLS]` state. This describes the features; it is not why the text-only head\n",
++    "is weak: after standardization removes the shared direction, validation ROC-AUC still stays at\n",
++    "0.47–0.50 (results report §7). / 平均余弦越高，特征越各向异性，冻结的 `[CLS]` 尤其明显。这只是描述，\n",
++    "不是纯文字分类头弱的原因：标准化去掉共同方向后，validation ROC-AUC 仍为 0.47–0.50（结果报告 §7）。"
+    ]
+   },
+   {
+diff --git a/notebooks/poc_model.ipynb b/notebooks/poc_model.ipynb
+index c2204b7..3f05c91 100644
+--- a/notebooks/poc_model.ipynb
++++ b/notebooks/poc_model.ipynb
+@@ -482,8 +482,10 @@
+    "metadata": {},
+    "source": [
+     "The same predictor backs the HTTP API (`bash scripts/serve.sh`, [docs/api_spec.md](../docs/api_spec.md)).\n",
+-    "On dataset samples it reproduces the run's `probability_1` to 6.4e-7 on CPU caches\n",
+-    "(`python -m src.evaluation.end_to_end`)."
++    "On dataset samples it reproduces a run's `probability_1` to 6.4e-7 for a head trained on CPU caches\n",
++    "(`_reproduction_cpu`, `python -m src.evaluation.end_to_end`). The default head shown here was trained\n",
++    "on the image group's CUDA (TF32) cache, so its probabilities differ from the recorded ones by up to\n",
++    "0.013 (D19, D24)."
+    ]
+   }
+  ],
+diff --git a/outputs/multimodal/20261016_distilbert_clip_seed42/checks/end_to_end_validation.json b/outputs/multimodal/20261016_distilbert_clip_seed42/checks/end_to_end_validation.json
+index 9e34851..2e40982 100644
+--- a/outputs/multimodal/20261016_distilbert_clip_seed42/checks/end_to_end_validation.json
++++ b/outputs/multimodal/20261016_distilbert_clip_seed42/checks/end_to_end_validation.json
+@@ -4,8 +4,8 @@
+   "device": "cpu",
+   "text_features_dir": "features/distilbert_first_token",
+   "image_features_dir": "features/20261006_code_fixes_validation_v2",
+-  "text_model": "/home/user/models/hf_local/distilbert-base-uncased",
+-  "clip_model": "/home/user/models/hf_local/clip-vit-base-patch32",
++  "text_model": "local_dir:distilbert-base-uncased",
++  "clip_model": "local_dir:clip-vit-base-patch32",
+   "text_max_abs_diff": 2.384185791015625e-07,
+   "text_min_cosine": 0.9999998211860657,
+   "image_max_abs_diff": 0.05450316146016121,
+diff --git a/outputs/multimodal/20261016_distilbert_clip_seed42_reproduction_cpu/checks/end_to_end_validation.json b/outputs/multimodal/20261016_distilbert_clip_seed42_reproduction_cpu/checks/end_to_end_validation.json
+index ff7b23f..8def83a 100644
+--- a/outputs/multimodal/20261016_distilbert_clip_seed42_reproduction_cpu/checks/end_to_end_validation.json
++++ b/outputs/multimodal/20261016_distilbert_clip_seed42_reproduction_cpu/checks/end_to_end_validation.json
+@@ -4,8 +4,8 @@
+   "device": "cpu",
+   "text_features_dir": "features/reproduction_distilbert_first_token",
+   "image_features_dir": "features/clip_vitb32_pooler_cpu",
+-  "text_model": "/home/user/models/hf_local/distilbert-base-uncased",
+-  "clip_model": "/home/user/models/hf_local/clip-vit-base-patch32",
++  "text_model": "local_dir:distilbert-base-uncased",
++  "clip_model": "local_dir:clip-vit-base-patch32",
+   "text_max_abs_diff": 2.384185791015625e-07,
+   "text_min_cosine": 0.9999998211860657,
+   "image_max_abs_diff": 0.0,
+diff --git a/requirements.txt b/requirements.txt
+index 31d5825..7f68d1d 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -21,6 +21,7 @@ pyyaml>=6.0
+ # serving (src/serving/app.py)
+ fastapi>=0.110
+ uvicorn>=0.29
++pydantic>=2
+ 
+ # tests (FastAPI TestClient) and notebook kernel; to open the notebooks:
+ #   pip install jupyterlab && jupyter lab notebooks/      (they need MEMOTION_DATA_DIR and the caches)
+diff --git a/scripts/check_tf32_emulation.py b/scripts/check_tf32_emulation.py
+index 5a2dcf6..2b74d5c 100644
+--- a/scripts/check_tf32_emulation.py
++++ b/scripts/check_tf32_emulation.py
+@@ -56,7 +56,9 @@ def main():
+     kwargs = {} if args.clip_model_dir else {"revision": "3d74acf"}
+     model = CLIPModel.from_pretrained(source, **kwargs).eval()
+     processor = AutoImageProcessor.from_pretrained(source, **kwargs)
+-    report = {"clip_source": str(source), "groups": {}}
++    # a local copy is recorded by folder name only (no machine-specific paths)
++    report = {"clip_source": f"local_dir:{Path(source).name}" if args.clip_model_dir else source,
++              "groups": {}}
+ 
+     reference_dir = resolve_features_dir(args.reference_dir)
+     cpu_dir = resolve_features_dir("data/processed/features/clip_vitb32_pooler_cpu")
+diff --git a/scripts/train.sh b/scripts/train.sh
+index cc62361..4e545c5 100755
+--- a/scripts/train.sh
++++ b/scripts/train.sh
+@@ -1,7 +1,8 @@
+ #!/usr/bin/env bash
+ # Train a head on cached frozen-encoder features (src/models/trainer.py).
+ #   bash scripts/train.sh                                                   # multimodal baseline
+-#   bash scripts/train.sh configs/train/image_baseline.yaml --run_id my_image_run
++#   bash scripts/train.sh configs/train/image_baseline.yaml --run_id my_image_run \
++#       --features_dir data/processed/features/20261006_code_fixes_validation_v2   # shipped image-group cache
+ #   bash scripts/train.sh configs/train/multimodal_text_only.yaml --seed 43
+ #   CONFIG=configs/train/multimodal_mean_pooling.yaml bash scripts/train.sh
+ # Needs MEMOTION_DATA_DIR (or the dataset in data/raw/) and the caches in data/processed/features/.
+diff --git a/setup.py b/setup.py
+index dcc3417..eb18da9 100644
+--- a/setup.py
++++ b/setup.py
+@@ -5,7 +5,8 @@
+     meme-serve --serving_config configs/deploy/serving.yaml
+ 
+ Commands run from the repository root, like the python -m forms in README.md, because configs,
+-data/, outputs/ and checkpoints/ are repository-relative.
++data/, outputs/ and checkpoints/ are repository-relative. Only editable installs are supported: the
++code is the top-level package `src`, and configs/ are not package data.
+ """
+ from setuptools import find_packages, setup
+ 
+@@ -24,7 +25,7 @@ setup(
+         "pyyaml>=6.0",
+     ],
+     extras_require={
+-        "serving": ["fastapi>=0.110", "uvicorn>=0.29"],
++        "serving": ["fastapi>=0.110", "uvicorn>=0.29", "pydantic>=2"],
+         "dev": ["httpx>=0.27", "nbclient>=0.10", "ipykernel>=6.29", "jupyterlab>=4.0"],
+     },
+     entry_points={
+diff --git a/src/evaluation/end_to_end.py b/src/evaluation/end_to_end.py
+index 0b7b892..090093b 100644
+--- a/src/evaluation/end_to_end.py
++++ b/src/evaluation/end_to_end.py
+@@ -92,8 +92,11 @@ def main(argv=None):
+     report = {"run_id": args.run_id, "n": len(ids), "device": str(device),
+               "text_features_dir": ckpt["text_features_dir"],
+               "image_features_dir": ckpt["image_features_dir"],
+-              "text_model": args.text_model_dir or f"{cfg['text_model_id']}@{cfg['text_revision']}",
+-              "clip_model": args.clip_model_dir or f"{cfg['clip_model_id']}@{cfg['clip_revision']}"}
++              # local copies are recorded by folder name only (no machine-specific paths)
++              "text_model": (f"local_dir:{Path(args.text_model_dir).name}" if args.text_model_dir
++                             else f"{cfg['text_model_id']}@{cfg['text_revision']}"),
++              "clip_model": (f"local_dir:{Path(args.clip_model_dir).name}" if args.clip_model_dir
++                             else f"{cfg['clip_model_id']}@{cfg['clip_revision']}")}
+     for name, key in (("text", "text_features"), ("image", "image_features")):
+         ref = F.normalize(cached[name][index], dim=-1)
+         diff = (outs[key] - ref).abs()
+diff --git a/src/models/trainer.py b/src/models/trainer.py
+index 8c1d9c6..b00738b 100644
+--- a/src/models/trainer.py
++++ b/src/models/trainer.py
+@@ -10,7 +10,8 @@ validation every epoch, and the best epoch by validation Macro-F1 is kept (READM
+ Extract the features first (src/features/feature_engineering.py, or unpack the cache zips into
+ data/processed/). Then, from the repo root (or with scripts/train.sh):
+     python -m src.models.trainer --config configs/train/multimodal_baseline.yaml
+-    python -m src.models.trainer --config configs/train/image_baseline.yaml --run_id 20261005_clip_vitb32_seed42
++    python -m src.models.trainer --config configs/train/image_baseline.yaml --run_id 20261005_clip_vitb32_seed42 \
++        --features_dir data/processed/features/20261006_code_fixes_validation_v2
+     python -m src.models.trainer --config configs/train/multimodal_text_only.yaml --seed 43
+ 
+ Writes
+-- 
+2.43.0
+

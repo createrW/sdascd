@@ -1,15 +1,23 @@
 """Collect validation metrics of multimodal runs into one table (per seed and mean +/- std).
 
-    python -m scripts.summarize_multimodal_runs --out Team_Review/multimodal/validation_runs.csv
+    python -m scripts.summarize_multimodal_runs --pattern '20261016_*' --out outputs/validation_runs_mine.csv
+    cmp outputs/validation_runs_mine.csv Team_Review/multimodal/validation_runs.csv
+    (the pattern keeps the 2026-10-16 runs of the committed table; '*' also lists the 20261018_overfit_* sweep;
+    --out never overwrites an existing file)
 
 Reads outputs/multimodal/<run_id>/metrics_validation.json for every run whose id matches
 --pattern; reproduction/rerun folders are skipped unless --include_reproductions is given.
 """
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from src.utils.safety import require_new_paths  # noqa: E402
 
 KEYS = ["macro_f1", "accuracy", "f1_0", "f1_1", "best_epoch", "training_seconds"]
 
@@ -34,6 +42,7 @@ def main():
         raise SystemExit("no runs found")
     df = pd.DataFrame(rows).sort_values(["model_name", "seed"])
     if args.out:
+        require_new_paths(Path(args.out))
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(args.out, index=False)
 

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Train a head on cached frozen-encoder features (src/models/trainer.py).
 #   bash scripts/train.sh                                                   # multimodal baseline
-#   bash scripts/train.sh configs/train/image_baseline.yaml --run_id my_image_run
+#   bash scripts/train.sh configs/train/image_baseline.yaml --run_id my_image_run_group_cache \
+#       --features_dir data/processed/features/20261006_code_fixes_validation_v2   # shipped image-group cache
 #   bash scripts/train.sh configs/train/multimodal_text_only.yaml --seed 43
 #   CONFIG=configs/train/multimodal_mean_pooling.yaml bash scripts/train.sh
 # Needs MEMOTION_DATA_DIR (or the dataset in data/raw/) and the caches in data/processed/features/.

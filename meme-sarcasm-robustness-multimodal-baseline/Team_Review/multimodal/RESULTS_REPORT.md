@@ -43,14 +43,14 @@ Validation split only (699 memes), threshold 0.5. The epoch is chosen by validat
 - **Image.** Frozen CLIP ViT-B/32 @ `3d74acf`, `pooler_output` (768-d), from the image group's cache.
 - **Fusion.** Each vector is L2-normalized, the two are concatenated [text | image] (1536-d), then Linear 512 → ReLU → Dropout 0.2 → Linear 2. Image only and text only use the same MLP on one 768-d input.
 - **Training.** Weighted cross-entropy (w0 = 2.281, w1 = 0.640, train only), AdamW lr 1e-3, weight decay 1e-4, batch 16, 30 epochs, seeds 42/43/44.
-- **Weight copies.** huggingface.co was blocked in this environment, so local copies were used. DistilBERT came from Hugging Face's legacy S3 files (weights SHA-256 `e60d7161…`). The CPU CLIP cache came from OpenAI's `ViT-B-32.pt`, whose SHA-256 matches OpenAI's URL, converted locally. Neither copy has been compared with a cache extracted from the Hub revision. For CLIP, the CPU cache agrees with the image group's Hub-based CUDA cache once TF32 is emulated (§10). For DistilBERT, that comparison is still to be run (see the README known problems).
+- **Weight copies.** huggingface.co was blocked in this environment, so local copies were used. DistilBERT came from Hugging Face's legacy S3 files (weights SHA-256 `e60d7161…`). The CPU CLIP cache came from OpenAI's `ViT-B-32.pt`, whose SHA-256 matches OpenAI's URL, converted locally. Neither copy has been compared with a cache extracted from the Hub revision. For CLIP, the CPU cache agrees with the image group's Hub-based CUDA cache once TF32 is emulated (§10). For DistilBERT, that comparison is still to be run (see [known problems](README.md#known-problems-and-unfinished-tasks--已知问题与未完成事项)).
 
 - **数据**：`MMSoc_Memotion_exported`，团队固定划分；二分类：`not_sarcastic` = 0，其余 = 1；文字为 `text_input`，除 1 条 train 样本回退到 `text_ocr` 外与 `text_corrected` 相同；空文本 → `[NO_TEXT]`。
 - **文字**：冻结 `distilbert-base-uncased` @ `1c4513b2…`，最后一层 `[CLS]` 向量（768 维），最长 128 token。这与 HF `DistilBertForSequenceClassification` 分类时用的 token 位置相同。但与该模型和论文的 GLUE 设置不同，这里编码器没有微调，也没有训练过的 pre-classifier 层；DistilBERT 训练时没有 next-sentence prediction，因此冻结的 [CLS] 并不是训练过的句向量。对照组：masked mean pooling。
 - **图片**：冻结 CLIP ViT-B/32 @ `3d74acf`，`pooler_output`（768 维），来自图片组缓存。
 - **融合**：分别 L2 归一化后拼接 [文字 | 图片]（1536 维），再经 Linear 512 → ReLU → Dropout 0.2 → Linear 2；纯图像、纯文字使用同一 MLP，输入为单个 768 维向量。
 - **训练**：加权交叉熵（w0 = 2.281，w1 = 0.640，仅由 Train 计算），AdamW lr 1e-3，weight decay 1e-4，batch 16，30 epochs，seed 42/43/44。
-- **权重副本**：本环境无法访问 huggingface.co，因此使用本地副本。DistilBERT 来自 Hugging Face 旧版 S3 文件（权重 SHA-256 `e60d7161…`）；CPU CLIP 缓存来自 OpenAI 的 `ViT-B-32.pt`（SHA-256 与 OpenAI 官方 URL 一致），在本地转换。两份副本都还没有与从 Hub revision 提取的缓存对比过。对 CLIP 而言，模拟 TF32 后 CPU 缓存与图片组基于 Hub 的 CUDA 缓存一致（§10）；对 DistilBERT 而言，这一对比仍待完成（见 README 已知问题）。
+- **权重副本**：本环境无法访问 huggingface.co，因此使用本地副本。DistilBERT 来自 Hugging Face 旧版 S3 文件（权重 SHA-256 `e60d7161…`）；CPU CLIP 缓存来自 OpenAI 的 `ViT-B-32.pt`（SHA-256 与 OpenAI 官方 URL 一致），在本地转换。两份副本都还没有与从 Hub revision 提取的缓存对比过。对 CLIP 而言，模拟 TF32 后 CPU 缓存与图片组基于 Hub 的 CUDA 缓存一致（§10）；对 DistilBERT 而言，这一对比仍待完成（见[已知问题](README.md#known-problems-and-unfinished-tasks--已知问题与未完成事项)）。
 
 ## 3. Dataset statistics / 数据统计
 
@@ -231,7 +231,7 @@ The head does read the text: about one prediction in six flips when captions are
   - For the main run's head, trained on the CUDA image cache, the same check agrees on all 64 labels. It fails the 0.01 probability tolerance (0.0131), because `validation_000550` is a TF32 outlier.
 - **CPU vs CUDA image features.** They differ because PyTorch uses TF32 for CUDA convolutions by default.
   - 38 of 6,292 images have cosine below 0.999, and the worst has 1 − cos = 0.0185.
-  - Emulating TF32 in the patch embedding ([scripts/check_tf32_emulation.py](../../scripts/check_tf32_emulation.py), [tf32_emulation.json](report/tf32_emulation.json)) cuts the mean absolute difference on the first 64 validation images from 1.7e-3 to 2.9e-5. It brings the 10 worst train and 10 worst validation images from cosine 0.981–0.985 to ≥ 0.99999995.
+  - Emulating TF32 in the patch embedding ([scripts/check_tf32_emulation.py](../../scripts/check_tf32_emulation.py), [tf32_emulation.json](report/tf32_emulation.json)) cuts the mean absolute difference on the first 64 validation images from 1.7e-3 to 2.9e-5. It brings the 10 worst train and 10 worst validation images from cosine 0.981–0.985 to ≥ 0.9999999.
   - The image group's head scores 0.5286 on CPU features, against 0.5276 reported.
 
 - **重载与重跑**：checkpoint 重载与相同输入重跑完全一致。
@@ -244,7 +244,7 @@ The head does read the text: about one prediction in six flips when captions are
   - 对主实验在 CUDA 图片缓存上训练的分类头，同一检查 64 个标签全部一致，但概率差 0.0131，超过 0.01 容差（`validation_000550` 是 TF32 离群样本）。
 - **CPU 与 CUDA 图片特征**：差异来自 PyTorch 在 CUDA 卷积上默认启用的 TF32。
   - 6,292 张图片中有 38 张余弦低于 0.999，最差的 1 − cos = 0.0185。
-  - 在 patch embedding 中模拟 TF32（[scripts/check_tf32_emulation.py](../../scripts/check_tf32_emulation.py)，[tf32_emulation.json](report/tf32_emulation.json)）后，前 64 张 validation 图片的平均绝对差从 1.7e-3 降到 2.9e-5；train 与 validation 各自最差的 10 张图片，余弦从 0.981–0.985 提高到 ≥ 0.99999995。
+  - 在 patch embedding 中模拟 TF32（[scripts/check_tf32_emulation.py](../../scripts/check_tf32_emulation.py)，[tf32_emulation.json](report/tf32_emulation.json)）后，前 64 张 validation 图片的平均绝对差从 1.7e-3 降到 2.9e-5；train 与 validation 各自最差的 10 张图片，余弦从 0.981–0.985 提高到 ≥ 0.9999999。
   - 图片组分类头在 CPU 特征上得到 0.5286，原报告为 0.5276。
 
 ## 11. Conclusions / 结论

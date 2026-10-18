@@ -1,7 +1,7 @@
 From 0ea0dbcffd8d17181bb5148c49a77e873c84fad9 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Sun, 18 Oct 2026 02:25:30 +0000
-Subject: [PATCH 4/4] Correct the overfitting diagnostic's claims after
+Subject: [PATCH 4/8] Correct the overfitting diagnostic's claims after
  verification
 
 - Memorization is compared at fixed epochs (mean of epochs 21-30): only a linear head and a
