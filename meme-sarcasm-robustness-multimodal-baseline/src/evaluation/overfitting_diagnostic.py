@@ -13,7 +13,11 @@ Questions it answers, with one definition of every quantity:
      more regularized head shrink the train-validation gap, and does fusion then beat image only?
 
     python -m src.evaluation.overfitting_diagnostic                       # A + B, ~35 min on 4 CPUs
-    python -m src.evaluation.overfitting_diagnostic --parts A --seeds 42  # quick
+    python -m src.evaluation.overfitting_diagnostic --parts A --seeds 42 --out_dir /tmp/diag  # quick
+    python -m src.evaluation.overfitting_diagnostic --report_only         # redraw from the CSVs
+
+A partial run (other --parts/--seeds/--variants) must name its own --out_dir, so it cannot replace the
+committed full results with a subset.
 
 Writes Team_Review/multimodal/overfitting/ (CSV + figures) and, for the sweep, the selected heads to
 checkpoints/multimodal/20261018_overfit_<variant>_<modalities>_seed<seed>/best.pt with run folders
@@ -172,8 +176,9 @@ def part_a(seeds, out, logs):
             old = torch.load(f"checkpoints/multimodal/{recorded}/best.pt", weights_only=True)["state_dict"]
             ref_log = Path(f"outputs/multimodal/{recorded}/training_log.csv").read_text(encoding="utf-8")
             checks.append({"run": recorded, "modalities": modset, "seed": seed,
-                           # byte comparison with the CSV the trainer wrote for the recorded run
-                           "training_log_identical": pd.DataFrame(log).to_csv(index=False) == ref_log,
+                           # same text as the CSV the trainer wrote for the recorded run (any line ending)
+                           "training_log_identical": pd.DataFrame(log).to_csv(index=False, lineterminator="\n")
+                           == ref_log.replace("\r\n", "\n"),
                            "best_checkpoint_identical": all(torch.equal(new[k], old[k]) for k in old),
                            "best_epoch": best["epoch"], "seconds": round(secs, 1)})
             pe.insert(1, "modalities", modset); pe.insert(2, "variant", "mlp512"); pe.insert(3, "seed", seed)
@@ -228,6 +233,7 @@ def summarize(per_epoch: pd.DataFrame) -> pd.DataFrame:
         g = g.sort_values("epoch")
         b = g.loc[g["validation_macro_f1"].idxmax()]
         last10 = g[g.epoch > g.epoch.max() - 10]
+        first, final = g.iloc[0], g.iloc[-1]
         rows.append({
             "modalities": modset, "variant": variant, "seed": seed, "best_epoch": int(b.epoch),
             "val_macro_f1_best": b.validation_macro_f1, "val_macro_f1_last10": last10.validation_macro_f1.mean(),
@@ -235,6 +241,12 @@ def summarize(per_epoch: pd.DataFrame) -> pd.DataFrame:
             "train_macro_f1_best": b.train_macro_f1, "train_roc_auc_best": b.train_roc_auc,
             "gap_macro_f1_best": b.train_macro_f1 - b.validation_macro_f1,
             "gap_roc_auc_best": b.train_roc_auc - b.validation_roc_auc,
+            # fixed epochs, not affected by which epoch happened to be selected
+            "gap_roc_auc_last10": (last10.train_roc_auc - last10.validation_roc_auc).mean(),
+            "train_roc_auc_epoch30": final.train_roc_auc,
+            # signed calibration: mean confidence minus accuracy (< 0 under-, > 0 over-confident)
+            "val_overconfidence_epoch1": first.validation_mean_confidence - first.validation_accuracy,
+            "val_overconfidence_epoch30": final.validation_mean_confidence - final.validation_accuracy,
             "train_weighted_ce_best": b.train_weighted_ce, "val_weighted_ce_best": b.validation_weighted_ce,
             "val_weighted_ce_min": g.validation_weighted_ce.min(),
             "val_weighted_ce_min_epoch": int(g.loc[g.validation_weighted_ce.idxmin()].epoch),
@@ -291,6 +303,7 @@ def make_report(out: Path):
             ax.plot(run.epoch, run[f"validation_{key}"], color=c, lw=2, label="validation")
             ax.plot(run.epoch, run[f"train_{key}"], color=c, lw=2, ls="--", label="train")
             ax.axhline(0.5, color=MUTED, lw=0.8, ls=":")
+            ax.text(30, 0.505, "0.5: label-independent level", fontsize=7, color=MUTED, ha="right")
             ax.set_ylim(0.4, 1.02)
             _axes_style(ax, title, {"macro_f1": "Macro-F1", "roc_auc": "ROC-AUC", "weighted_ce": "loss"}[key])
             ax.legend(fontsize=7, frameon=False, loc="center right")
@@ -329,6 +342,7 @@ def make_report(out: Path):
                     ax.fill_between(mean.index, lo, hi, color=COLORS[modset], alpha=0.12, lw=0)
             if key != "weighted_ce":
                 ax.axhline(0.5, color=MUTED, lw=0.8, ls=":")
+                ax.text(30, 0.505, "0.5: label-independent level", fontsize=7, color=MUTED, ha="right")
             _axes_style(ax, title, {"macro_f1": "Macro-F1", "roc_auc": "ROC-AUC", "weighted_ce": "loss"}[key])
         axes[0].legend(fontsize=7, frameon=False)
         fig.suptitle("Recorded configurations, seeds 42-44 (line = mean, band = min-max); dashed = train, solid = validation",
@@ -349,7 +363,8 @@ def make_report(out: Path):
             row = {"variant": v, "seeds": len(seeds)}
             for name, frame in (("fusion", f), ("image", i)):
                 for col in ("val_macro_f1_best", "val_macro_f1_last10", "val_roc_auc_last10",
-                            "gap_roc_auc_best", "gap_macro_f1_best", "val_weighted_ce_best", "best_epoch"):
+                            "gap_roc_auc_best", "gap_roc_auc_last10", "train_roc_auc_epoch30",
+                            "gap_macro_f1_best", "val_weighted_ce_best", "best_epoch"):
                     row[f"{name}_{col}_mean"] = frame.loc[seeds, col].mean()
                     row[f"{name}_{col}_sd"] = frame.loc[seeds, col].std(ddof=1) if len(seeds) > 1 else np.nan
             for col in ("val_macro_f1_best", "val_macro_f1_last10", "val_roc_auc_last10"):
@@ -358,12 +373,20 @@ def make_report(out: Path):
             rows.append(row)
         table = pd.DataFrame(rows)
         table.to_csv(out / "fusion_vs_image.csv", index=False, float_format="%.4f")
+        # same capacity: fusion with hidden H has about as many weights as image only with 2H
+        means = sw.groupby(["modalities", "variant"])[["val_macro_f1_best", "val_macro_f1_last10"]].mean()
+        pairs = [("mlp256", "mlp512"), ("mlp128", "mlp256"), ("mlp64", "mlp128")]
+        pd.DataFrame([{"fusion_head": f, "image_head": i,
+                       **{f"delta_{c}": means.loc[("fusion", f), c] - means.loc[("image", i), c]
+                          for c in ("val_macro_f1_best", "val_macro_f1_last10")}}
+                      for f, i in pairs if ("fusion", f) in means.index and ("image", i) in means.index]
+                     ).to_csv(out / "parameter_matched.csv", index=False, float_format="%.4f")
 
-        fig, axes = plt.subplots(1, 3, figsize=(16, 4.2))
+        fig, axes = plt.subplots(1, 4, figsize=(21, 4.4))
         x = np.arange(len(order))
         for ax, col, title in ((axes[0], "val_macro_f1_last10", "Validation Macro-F1, mean of last 10 epochs"),
                                (axes[1], "val_roc_auc_last10", "Validation ROC-AUC, mean of last 10 epochs"),
-                               (axes[2], "gap_roc_auc_best", "Train minus validation ROC-AUC (selected epoch)")):
+                               (axes[2], "gap_roc_auc_last10", "Train minus validation ROC-AUC, last 10 epochs")):
             for k, modset in enumerate(("fusion", "image")):
                 pos = x + (k - 0.5) * 0.3
                 vals = [sw[(sw.variant == v) & (sw.modalities == modset)][col].to_numpy() for v in order]
@@ -371,16 +394,33 @@ def make_report(out: Path):
                            color=COLORS[modset], alpha=0.55, linewidths=0)
                 ax.scatter(pos, [a.mean() for a in vals], s=46, marker="D", color=COLORS[modset],
                            edgecolors="white", linewidths=1.5, label=NAMES[modset])
-            if col != "gap_roc_auc_best":
+            if col != "gap_roc_auc_last10":
                 ax.axhline(0.5, color=MUTED, lw=0.8, ls=":")
             ax.set_xticks(x, order, rotation=30, ha="right", fontsize=8)
             ax.set_ylabel({"val_macro_f1_last10": "Macro-F1", "val_roc_auc_last10": "ROC-AUC",
-                           "gap_roc_auc_best": "ROC-AUC gap"}[col], fontsize=9, color=INK)
+                           "gap_roc_auc_last10": "ROC-AUC gap"}[col], fontsize=9, color=INK)
             ax.set_title(title, fontsize=10, color=INK, loc="left")
             ax.grid(True, axis="y", color=GRID, linewidth=0.6)
             ax.tick_params(labelsize=8, colors=MUTED)
             for side in ("top", "right"):
                 ax.spines[side].set_visible(False)
+        ax = axes[3]
+        f = sw[sw.modalities == "fusion"].set_index(["variant", "seed"])
+        i = sw[sw.modalities == "image"].set_index(["variant", "seed"])
+        ax.axhspan(-0.03, 0.03, color=GRID, alpha=0.7, lw=0)
+        ax.text(len(order) - 0.5, 0.027, "about the resolution of 699 memes", fontsize=7, color=MUTED, ha="right", va="top")
+        ax.axhline(0, color=INK, lw=0.8)
+        for k, v in enumerate(order):
+            d = (f.loc[v, "val_macro_f1_best"] - i.loc[v, "val_macro_f1_best"]).dropna()
+            ax.scatter(np.full(len(d), k), d, s=14, color=COLORS["fusion"], alpha=0.55, linewidths=0)
+            ax.scatter([k], [d.mean()], s=46, marker="D", color=COLORS["fusion"], edgecolors="white", linewidths=1.5)
+        ax.set_xticks(x, order, rotation=30, ha="right", fontsize=8)
+        ax.set_ylabel("fusion minus image only", fontsize=9, color=INK)
+        ax.set_title("Paired difference, Macro-F1 at the selected epoch", fontsize=10, color=INK, loc="left")
+        ax.grid(True, axis="y", color=GRID, linewidth=0.6)
+        ax.tick_params(labelsize=8, colors=MUTED)
+        for side in ("top", "right"):
+            ax.spines[side].set_visible(False)
         axes[0].legend(fontsize=8, frameon=False)
         fig.suptitle("Head capacity and regularization sweep (diamond = mean of seeds 42-44, dots = seeds; validation only)",
                      fontsize=11, color=INK, x=0.01, ha="left")
@@ -400,8 +440,14 @@ def main(argv=None):
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
     if args.report_only:
+        summarize(pd.read_csv(out / "per_epoch.csv")).to_csv(out / "run_summary.csv", index=False,
+                                                            float_format="%.6f")
         make_report(out)
         return
+    if out == Path(ap.get_default("out_dir")) and (
+            sorted(args.parts) != ["A", "B"] or sorted(args.seeds) != [42, 43, 44]
+            or sorted(args.variants) != sorted(VARIANTS)):
+        ap.error("a partial run needs its own --out_dir (the default folder holds the full results)")
     t0 = time.time()
     logs = sys.stdout
     frames = []

@@ -162,9 +162,9 @@ classifier.
 
 * The frozen text features carry little signal (text-only 0.486 Macro-F1 vs majority 0.435);
   fusion does not beat image-only on validation (RESULTS_REPORT §5–6).
-* The heads memorize the training set (train ROC-AUC ≈ 1 vs validation ≈ 0.54). Smaller and more
-  regularized heads shrink that gap but improve neither validation scores nor fusion vs image only
-  ([overfitting diagnostic](../Team_Review/multimodal/overfitting/README.md)).
+* The heads fit the training set almost perfectly (train ROC-AUC ≈ 1 vs validation ≈ 0.54). A linear
+  head or a 10× lower learning rate shrinks that gap; neither improves validation scores or fusion vs
+  image only ([overfitting diagnostic](../Team_Review/multimodal/overfitting/README.md)).
 * The image group's reference cache was extracted with TF32; CPU caches differ slightly (D19).
 * Test has not been scored. The image group's cache has no test split; use the CPU cache.
 * Text and multimodal caches/checkpoints are not in Git (size); see

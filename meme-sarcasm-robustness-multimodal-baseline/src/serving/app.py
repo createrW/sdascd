@@ -131,11 +131,12 @@ def open_image(raw: bytes, settings: dict) -> Image.Image:
 def max_request_bytes(settings: dict) -> int:
     """Body-size limit implied by the per-item limits (a gateway should also enforce one).
 
-    Per item: base64 of max_image_bytes + 5% for accepted line breaks (each sent as the 2-byte JSON
-    escape "\\n" every 76 characters) and a data-URL prefix, plus the caption as JSON (\\uXXXX escapes).
+    Per item: base64 of max_image_bytes, plus 5 bytes per 64 characters for the accepted line breaks
+    (CRLF every 64 characters, sent as the 4-byte JSON escape) and escaped slashes, plus the caption
+    as JSON (\\uXXXX escapes) and 1 KiB for keys and a data-URL prefix.
     """
     b64 = 4 * math.ceil(settings["max_image_bytes"] / 3)
-    per_item = math.ceil(b64 * 1.05) + 12 * settings["max_text_chars"] + 1024
+    per_item = b64 + 5 * math.ceil(b64 / 64) + 12 * settings["max_text_chars"] + 1024
     return settings["max_batch_size"] * per_item + 64 * 1024
 
 

@@ -117,9 +117,10 @@ class HeadTests(unittest.TestCase):
         y = torch.randint(0, 2, (200,), generator=g)
         weights = torch.tensor([1.5, 0.75])
         cfg = dict(MM_CFG, epochs=3, batch_size=32, fusion=dict(MM_CFG["fusion"], hidden_dim=0, dropout=0.3))
-        results = []
+        results, calls = [], []
         with tempfile.TemporaryDirectory() as tmp:
-            for callback in (None, lambda head, epoch: (split_scores(head, feats, y, weights, 0.5),
+            for callback in (None, lambda head, epoch: (calls.append(epoch),
+                                                        split_scores(head, feats, y, weights, 0.5),
                                                         train_mode_loss(head, feats, y, weights))):
                 torch.manual_seed(1)
                 head = build_head(cfg, feats)
@@ -127,6 +128,7 @@ class HeadTests(unittest.TestCase):
                                    Path(tmp) / "best.pt", epoch_callback=callback)
                 results.append((log, {k: v.clone() for k, v in head.state_dict().items()}))
         (log_a, state_a), (log_b, state_b) = results
+        self.assertEqual(calls, [1, 2, 3])                 # the scoring really ran every epoch
         self.assertEqual(log_a, log_b)
         self.assertTrue(all(torch.equal(state_a[k], state_b[k]) for k in state_a))
         self.assertEqual(set(state_a), {"classifier.1.weight", "classifier.1.bias"})  # linear head

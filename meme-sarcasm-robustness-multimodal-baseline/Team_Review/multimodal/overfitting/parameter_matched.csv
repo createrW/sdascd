@@ -1,0 +1,4 @@
+fusion_head,image_head,delta_val_macro_f1_best,delta_val_macro_f1_last10
+mlp256,mlp512,-0.0167,-0.0173
+mlp128,mlp256,-0.0305,-0.0270
+mlp64,mlp128,-0.0335,-0.0333
