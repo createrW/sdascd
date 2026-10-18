@@ -1,0 +1,10 @@
+run,modalities,seed,training_log_identical,best_checkpoint_identical,best_epoch,seconds
+20261016_distilbert_clip_seed42,fusion,42,True,True,25,68.4
+20261016_distilbert_clip_frozen_seed43,fusion,43,True,True,27,106.0
+20261016_distilbert_clip_frozen_seed44,fusion,44,True,True,21,105.3
+20261016_clip_frozen_mlp_image_only_seed42,image,42,True,True,29,75.7
+20261016_clip_frozen_mlp_image_only_seed43,image,43,True,True,23,21.4
+20261016_clip_frozen_mlp_image_only_seed44,image,44,True,True,19,23.0
+20261016_distilbert_frozen_mlp_text_only_seed42,text,42,True,True,9,35.0
+20261016_distilbert_frozen_mlp_text_only_seed43,text,43,True,True,12,30.1
+20261016_distilbert_frozen_mlp_text_only_seed44,text,44,True,True,11,30.3

@@ -37,7 +37,8 @@ datasets/
 # Downloaded models, caches, checkpoints, and extracted features
 /hf_cache/
 /hf_local/
-/features/          # old cache location (repository root only; src/features/ is code)
+# old cache location (repository root only: src/features/ is code). No comments after a pattern.
+/features/
 *.log
 .ipynb_checkpoints/
 *.pt

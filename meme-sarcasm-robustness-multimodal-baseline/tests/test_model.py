@@ -108,6 +108,29 @@ class HeadTests(unittest.TestCase):
                 head = build_head(cfg, {m: torch.zeros(1, 768) for m in ("text", "image")})
                 self.assertEqual(head.modalities, tuple(cfg.get("modalities", ("image",))))
 
+    def test_epoch_callback_scoring_does_not_change_training(self):
+        """The overfitting diagnostic scores the head every epoch; training must be unaffected."""
+        from src.evaluation.overfitting_diagnostic import split_scores, train_mode_loss
+        from src.models.trainer import fit
+        g = torch.Generator().manual_seed(0)
+        feats = {m: torch.randn(200, 768, generator=g) for m in ("text", "image")}
+        y = torch.randint(0, 2, (200,), generator=g)
+        weights = torch.tensor([1.5, 0.75])
+        cfg = dict(MM_CFG, epochs=3, batch_size=32, fusion=dict(MM_CFG["fusion"], hidden_dim=0, dropout=0.3))
+        results = []
+        with tempfile.TemporaryDirectory() as tmp:
+            for callback in (None, lambda head, epoch: (split_scores(head, feats, y, weights, 0.5),
+                                                        train_mode_loss(head, feats, y, weights))):
+                torch.manual_seed(1)
+                head = build_head(cfg, feats)
+                log, _, _, _ = fit(head, feats, y, feats, y, cfg, torch.device("cpu"),
+                                   Path(tmp) / "best.pt", epoch_callback=callback)
+                results.append((log, {k: v.clone() for k, v in head.state_dict().items()}))
+        (log_a, state_a), (log_b, state_b) = results
+        self.assertEqual(log_a, log_b)
+        self.assertTrue(all(torch.equal(state_a[k], state_b[k]) for k in state_a))
+        self.assertEqual(set(state_a), {"classifier.1.weight", "classifier.1.bias"})  # linear head
+
     def test_task_detection_from_the_checkpoint(self):
         shipped = ROOT / f"checkpoints/image/{SHIPPED_IMAGE_HEADS[-1]}/best.pt"
         self.assertEqual(detect_task("any", shipped), "image")       # legacy config, no task key

@@ -14,8 +14,9 @@ Endpoints
 The threshold is the training one (0.5, README 3.2). Uploads are checked cheaply first (body and
 base64 size, image format, pixel count, aspect ratio), then decoded to RGB one at a time and passed
 through the same CLIP processor and DistilBERT tokenizer as training (src/serving/predictor.py).
-Decoding and inference run one request at a time behind a lock, so at most one full-size image is
-in memory.
+Decoding and inference run one request at a time behind a lock, and each image's decoded raster is
+released before the next one is decoded, so memory holds one full-size image (plus its RGB copy) at
+a time; the compressed uploads of a batch stay in memory until the response.
 """
 from __future__ import annotations
 
@@ -109,7 +110,10 @@ def open_image(raw: bytes, settings: dict) -> Image.Image:
     """Open (header only, no pixel decoding) and check format, pixel count and aspect ratio."""
     try:
         image = Image.open(io.BytesIO(raw), formats=IMAGE_FORMATS)
-    except Exception:  # UnidentifiedImageError, OSError, DecompressionBombError, ...
+    except Image.DecompressionBombError:  # Pillow's own cap (~179 MP) is hit before ours
+        raise HTTPException(status_code=413,
+                            detail=f"image has more than {settings['max_image_pixels']} pixels")
+    except Exception:  # UnidentifiedImageError, OSError, ...
         raise HTTPException(status_code=400, detail="image_base64 is not a readable "
                                                     f"{'/'.join(IMAGE_FORMATS)} image")
     width, height = image.size
@@ -125,8 +129,13 @@ def open_image(raw: bytes, settings: dict) -> Image.Image:
 
 
 def max_request_bytes(settings: dict) -> int:
-    """Body-size limit implied by the per-item limits (a gateway should also enforce one)."""
-    per_item = 4 * math.ceil(settings["max_image_bytes"] / 3) + 6 * settings["max_text_chars"] + 1024
+    """Body-size limit implied by the per-item limits (a gateway should also enforce one).
+
+    Per item: base64 of max_image_bytes + 5% for accepted line breaks (each sent as the 2-byte JSON
+    escape "\\n" every 76 characters) and a data-URL prefix, plus the caption as JSON (\\uXXXX escapes).
+    """
+    b64 = 4 * math.ceil(settings["max_image_bytes"] / 3)
+    per_item = math.ceil(b64 * 1.05) + 12 * settings["max_text_chars"] + 1024
     return settings["max_batch_size"] * per_item + 64 * 1024
 
 
@@ -188,11 +197,15 @@ def create_app(predictor=None, serving_config: str | None = None, overrides: dic
         texts = [item.text for item in items]
         with lock:
             pixels = []
-            for image in opened:
+            for i in range(len(opened)):
+                image, opened[i] = opened[i], None   # drop the list's reference ...
                 try:
                     rgb = to_rgb(image)
                 except Exception:  # truncated or corrupt pixel data
                     raise HTTPException(status_code=400, detail="image_base64 could not be decoded")
+                finally:
+                    image.close()                    # ... and the decoded raster, before the next image
+                    del image
                 pixels.append(model.pixel_values([rgb]))
                 del rgb
             results = model.predict(texts, pixel_values=torch.cat(pixels))

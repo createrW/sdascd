@@ -79,6 +79,10 @@ def main(argv=None):
         print("!! Scoring the TEST split. Do this once, at the end, never to pick settings.")
 
     ckpt_path = Path(args.checkpoint or f"checkpoints/{task}/{args.run_id}/best.pt")
+    if not ckpt_path.is_file():
+        other = [t for t in TASKS if Path(f"checkpoints/{t}/{args.run_id}/best.pt").is_file()]
+        raise SystemExit(f"{ckpt_path} not found" + (f"; {args.run_id} is a {other[0]} run, use --task "
+                                                       f"{other[0]}" if other else ""))
     ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=True)
     actual = infer_task(ckpt["config"])  # inferred for checkpoints saved before `task:` existed
     if actual != task:

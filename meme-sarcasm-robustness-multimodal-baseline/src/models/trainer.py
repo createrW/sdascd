@@ -81,9 +81,12 @@ def eval_loss(head, features, y, loss_fn, device):
     return loss_fn(logits, y.to(device)).item()
 
 
-def fit(head, f_train, y_train, f_val, y_val, cfg, device, ckpt_path, ckpt_extra=None):
+def fit(head, f_train, y_train, f_val, y_val, cfg, device, ckpt_path, ckpt_extra=None,
+        epoch_callback=None):
     """Train for cfg['epochs']; save the best epoch (validation Macro-F1) to ckpt_path.
 
+    epoch_callback(head, epoch), if given, runs after every epoch (diagnostics). It must not use the
+    global random generators, or later epochs would change.
     Returns (per-epoch log, best-epoch record with probabilities/predictions, seconds, class weights).
     """
     seed, threshold = cfg["seed"], cfg["threshold"]
@@ -127,6 +130,8 @@ def fit(head, f_train, y_train, f_val, y_val, cfg, device, ckpt_path, ckpt_extra
             flag = "  <- best so far, saved"
         print(f"epoch {epoch:>3}  train_loss {running / n_seen:.4f}  val_loss {val_loss:.4f}  "
               f"val_macroF1 {m['macro_f1']:.4f}  val_acc {m['accuracy']:.4f}{flag}")
+        if epoch_callback is not None:
+            epoch_callback(head, epoch)
     return log, best, time.time() - t0, weights
 
 

@@ -130,7 +130,7 @@ curl -s -X POST localhost:8000/predict/batch -H 'Content-Type: application/json'
 | Status | When | Body |
 |---|---|---|
 | 400 | `image_base64` is not base64, is empty, is not a JPEG/PNG/GIF/WebP/BMP image, or its pixel data cannot be decoded | `{"detail": "<message>"}` |
-| 413 | image file larger than `max_image_bytes`, more than `max_image_pixels` pixels, aspect ratio above `max_aspect_ratio`; batch larger than `max_batch_size`; request body above the implied limit | `{"detail": "<message>"}` |
+| 413 | image file larger than `max_image_bytes`, more than `max_image_pixels` pixels (Pillow's own cap of about 179 MP applies on top), aspect ratio above `max_aspect_ratio`; batch larger than `max_batch_size`; request body above the implied limit | `{"detail": "<message>"}` |
 | 422 | missing `image_base64`, wrong types, empty `items`, caption with an unpaired UTF-16 surrogate | `{"detail": [{"type": "...", "loc": [...], "msg": "..."}]}` (the input is not echoed back) |
 | 422 | caption longer than `max_text_chars` | `{"detail": "<message>"}` (a string) |
 | 503 | the app runs without its startup hook and no model is loaded (not the case under `serve.sh` / uvicorn) | `{"detail": "model not loaded"}` |

@@ -119,8 +119,9 @@ processor once and the trained `FusionHead` weights from a checkpoint; preproces
 training-time code in `src/data/preprocess.py`. `src/serving/app.py` wraps it in FastAPI
 (`create_app` factory; `/health`, `/model`, `/predict`, `/predict/batch`). It checks every upload
 before decoding (body and base64 size, image format, pixel count, aspect ratio), then decodes and
-preprocesses one image at a time and runs inference behind a lock, so memory stays bounded by one
-full-size image. Settings live in
+preprocesses one image at a time behind a lock, releasing each decoded raster before the next, so
+the decoded pixels of only one image (plus its RGB copy) are in memory at a time; the compressed
+uploads of a batch are held until the response. Settings live in
 `configs/deploy/serving.yaml` (checkpoint, local encoder copies, device, limits, host/port). The
 `Dockerfile` builds a CPU image with code and configs only; the checkpoint and (offline) encoder
 weights are mounted at run time, so no dataset-derived file is baked into the image.
@@ -161,6 +162,9 @@ classifier.
 
 * The frozen text features carry little signal (text-only 0.486 Macro-F1 vs majority 0.435);
   fusion does not beat image-only on validation (RESULTS_REPORT §5–6).
+* The heads memorize the training set (train ROC-AUC ≈ 1 vs validation ≈ 0.54). Smaller and more
+  regularized heads shrink that gap but improve neither validation scores nor fusion vs image only
+  ([overfitting diagnostic](../Team_Review/multimodal/overfitting/README.md)).
 * The image group's reference cache was extracted with TF32; CPU caches differ slightly (D19).
 * Test has not been scored. The image group's cache has no test split; use the CPU cache.
 * Text and multimodal caches/checkpoints are not in Git (size); see

@@ -57,8 +57,9 @@ python -m src.features.feature_engineering image --splits train validation test 
 
 # 3. train the fusion MLP (README 6 outputs + checkpoints/multimodal/<run_id>/best.pt);
 #    feature dirs come from the config's `features:` block
-python -m src.models.trainer --config configs/train/multimodal_baseline.yaml --run_id 20261016_distilbert_clip_seed42
-python -m scripts.verify_predictions outputs/multimodal/20261016_distilbert_clip_seed42/predictions_validation.csv
+#    (the recorded run is 20261016_distilbert_clip_seed42; choose a new run_id, existing runs are never overwritten)
+python -m src.models.trainer --config configs/train/multimodal_baseline.yaml --run_id 20261016_distilbert_clip_seed42_mine
+python -m scripts.verify_predictions outputs/multimodal/20261016_distilbert_clip_seed42_mine/predictions_validation.csv
 
 # 4. reload the saved head (compares with the reported metrics, tolerance 0.01); = bash scripts/eval.sh <run_id>
 #    the shipped reference runs already have reeval/ and checks/, so give them a new output path
@@ -69,10 +70,10 @@ python -m src.evaluation.evaluate --run_id 20261016_distilbert_clip_seed42 \
 python -m src.features.feature_engineering text --out_prefix data/processed/features/reproduction_distilbert
 python -m src.models.trainer --config configs/train/multimodal_baseline.yaml \
     --text_features_dir data/processed/features/reproduction_distilbert_first_token \
-    --image_features_dir data/processed/features/clip_vitb32_pooler_cpu --run_id 20261016_distilbert_clip_seed42_reproduction_cpu
+    --image_features_dir data/processed/features/clip_vitb32_pooler_cpu --run_id 20261016_distilbert_clip_seed42_reproduction_mine
 python -m scripts.verify_reproduction \
     --reference_metrics outputs/multimodal/20261016_distilbert_clip_seed42/metrics_validation.json \
-    --candidate_metrics outputs/multimodal/20261016_distilbert_clip_seed42_reproduction_cpu/metrics_validation.json
+    --candidate_metrics outputs/multimodal/20261016_distilbert_clip_seed42_reproduction_mine/metrics_validation.json
 
 # 6. end-to-end check (raw text + raw image through the serving predictor) and smoke test
 python -m src.evaluation.end_to_end --run_id 20261016_distilbert_clip_seed42_reproduction_cpu \

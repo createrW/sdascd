@@ -15,7 +15,12 @@ MODALITY_ORDER = ("text", "image")  # fusion concatenation order: [text | image]
 
 def build_mlp(input_dim: int, hidden_dim: int = 512, dropout: float = 0.2,
               num_classes: int = 2) -> nn.Sequential:
-    """README 4.3 small MLP: Linear -> ReLU -> Dropout -> Linear (one hidden layer)."""
+    """README 4.3 small MLP: Linear -> ReLU -> Dropout -> Linear (one hidden layer).
+
+    hidden_dim 0 gives a linear classifier (Dropout -> Linear), the capacity-ablation variant.
+    """
+    if not hidden_dim:
+        return nn.Sequential(nn.Dropout(dropout), nn.Linear(input_dim, num_classes))
     return nn.Sequential(
         nn.Linear(input_dim, hidden_dim),
         nn.ReLU(),

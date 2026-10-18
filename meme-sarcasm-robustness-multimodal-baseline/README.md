@@ -105,6 +105,7 @@ requirements.txt, requirements-lock.txt, setup.py, Dockerfile, .dockerignore, .g
 | Goal / 目的 | Open / 查看 |
 |---|---|
 | **Multimodal results report (statistics, figures, conclusions) / 多模态结果报告** | [Team_Review/multimodal/RESULTS_REPORT.md](Team_Review/multimodal/RESULTS_REPORT.md) |
+| Overfitting diagnostic (same-parameter train/val scoring, head-size sweep) / 过拟合诊断 | [Team_Review/multimodal/overfitting/README.md](Team_Review/multimodal/overfitting/README.md) |
 | Technical design / 技术方案设计 | [docs/design.md](docs/design.md) |
 | Model API / 模型接口 | [docs/api_spec.md](docs/api_spec.md) |
 | Experiment log and A/B comparisons / 实验记录 | [docs/experiment_log.md](docs/experiment_log.md) |
@@ -164,7 +165,10 @@ For the tested PyTorch wheel an up-to-date NVIDIA driver is enough; no separate 
 
 ## Rules / 约定
 
-* Never commit the dataset or its zip, feature caches, encoder weights, Hugging Face caches or large checkpoints (team README 9.4, `.gitignore`). The only dataset-derived files in Git are the groups' curated manual-review evidence: `Team_Review/image/images/*_review.png` (32 image-group samples) and `outputs/multimodal/20261016_distilbert_clip_seed42/review/` (16 validation memes and their captions). Remove them before making the repository public. New outputs, including `error_analysis/` and re-evaluation folders inside the reference runs, stay git-ignored.
+* Never commit the dataset or its zip, feature caches, encoder weights, Hugging Face caches or model checkpoints (team README 9.4, `.gitignore`). Deliberate exceptions, kept by the groups for review and reproduction:
+  * dataset-derived review evidence: `Team_Review/image/images/*_review.png` (grids of 32 image-group samples), `Team_Review/image/manual_review/*.csv` (their sample IDs, labels and caption excerpts) and `outputs/multimodal/20261016_distilbert_clip_seed42/review/` (16 validation memes with captions); every `predictions_*.csv` also lists the dataset label of each `sample_id`;
+  * the image group's three 8.6 KB linear heads in `checkpoints/image/`.
+  Remove the review evidence before making the repository public. New outputs, including `error_analysis/` and re-evaluation folders inside the reference runs, stay git-ignored.
 * Validation selects epochs and compares models; Test is scored once, at the end (`--split test`).
 * Existing run, checkpoint and cache folders are never overwritten: choose a new `--run_id` / output folder.
 * Record every formal run in [docs/experiment_log.md](docs/experiment_log.md) and team-wide choices in [docs/decisions.md](docs/decisions.md).

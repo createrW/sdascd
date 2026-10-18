@@ -143,9 +143,11 @@ How the permutation test works: the labels are permuted 10,000 times while each 
 
 ![Training curves](report/fig2_training_curves.png)
 
-- **Overfitting.**
-  - Baseline seed 42: train loss falls from 0.69 to 0.06, while validation loss rises from 0.69 at epoch 1 (its minimum) to 1.74. Image only ends at train 0.02, validation 2.6.
-  - In every fusion and image-only run, validation loss is lowest at epoch 1, at about ln 2 = 0.693, which is the loss of a uniform prediction. Validation loss therefore never beats a uniform predictor and cannot guide epoch selection here.
+- **Overfitting: what is observed, what is tested** (full diagnostic: [overfitting/README.md](overfitting/README.md)).
+  - *Observed.* Scored with the same parameters, one loss definition and `eval()` mode on both splits, the selected fusion heads reach train Macro-F1 0.978–0.995 and train ROC-AUC ≥ 0.999, against validation 0.53–0.54 and 0.53–0.55. Image-only heads do the same. The heads memorize the training set.
+  - *Observed.* Validation loss is lowest at epoch 1 in every fusion and image-only run (≈ ln 2 = 0.693, a uniform prediction) and rises to 1.16–1.64 (fusion) at the selected epoch. The rise comes from over-confident errors (seed 42: 0 → 92 errors at ≥ 90 % confidence by epoch 25, of 240 errors), not from worse ranking: validation ROC-AUC stays at 0.52–0.55 and Macro-F1 peaks late (epochs 19–29). Validation loss therefore cannot guide epoch selection here, but "training longer classifies worse" is not what the curves show.
+  - *Accounting.* The logged train loss (dropout on, batch means while weights move) is not on the same footing as the logged validation loss (whole split, `eval()`): at epoch 25 it is 0.092 against 0.058 in `eval()` mode.
+  - *Tested.* Smaller or linear heads, dropout 0.5, weight decay 1e-2 and a 10× lower learning rate reduce the train−validation gap (ROC-AUC gap 0.46 → 0.20 for a linear head) but do not raise validation Macro-F1 or ROC-AUC, and fusion stays below image only in all 8 head variants (fusion higher in 1 of 24 seed pairs). Overfitting is real, but the sweep does not support it as the main reason fusion shows no gain.
 - **Text only barely fits even the training data.** Its train loss is still 0.61 at epoch 30.
   - **Description only, not a cause:** L2-normalized frozen [CLS] vectors share a dominant mean direction. The exact mean pairwise cosine is 0.897 (norm of the mean vector 0.947), against 0.268 for CLIP image vectors ([feature_geometry.csv](report/feature_geometry.csv)).
   - **The shared direction is not why validation fails.** Standardizing the features removes it, and a logistic-regression probe then fits the training set (ROC-AUC 0.67–0.76), yet validation ROC-AUC stays at 0.47–0.50. Mean pooling (cosine 0.726) does no better (0.46–0.47).
@@ -155,9 +157,11 @@ How the permutation test works: the labels are permuted 10,000 times while each 
   - For text only the gap is 0.0464 ± 0.0060. Its best epochs are 9–12, and its curve declines afterwards, so that gap mixes real early-stopping effect with selection noise.
   - Treat single-run validation numbers of the image-based models as optimistic by about 0.015–0.02.
 
-- **过拟合**：
-  - 基线 seed 42 的 train loss 从 0.69 降到 0.06，validation loss 从第 1 个 epoch 的 0.69（最低点）升到 1.74；纯图像最终 train 0.02、validation 2.6。
-  - 所有融合与纯图像实验中，validation loss 都在第 1 个 epoch 最低，约为 ln 2 = 0.693，即均匀预测的损失。也就是说，validation loss 从未优于均匀预测，在这里无法用来选 epoch。
+- **过拟合：观察到的与检验过的**（完整诊断见 [overfitting/README.md](overfitting/README.md)）：
+  - *观察到*：用同一组参数、同一 loss 定义、`eval()` 模式同时评估两个划分，所选融合分类头的训练 Macro-F1 为 0.978–0.995、训练 ROC-AUC ≥ 0.999，而验证集为 0.53–0.54 和 0.53–0.55；纯图像分类头相同。分类头记住了训练集。
+  - *观察到*：所有融合与纯图像实验的验证 loss 都在第 1 个 epoch 最低（≈ ln 2 = 0.693，即均匀预测），在所选 epoch 升到 1.16–1.64（融合）。上升来自高置信错误（seed 42：到第 25 个 epoch，240 个错误中有 92 个置信度 ≥ 90%，第 1 个 epoch 为 0），而不是排序变差：验证 ROC-AUC 保持在 0.52–0.55，Macro-F1 在后期（第 19–29 个 epoch）达到最高。因此验证 loss 不能用来选 epoch，但曲线并不表明"训练越久分类越差"。
+  - *口径*：记录的 train loss（开启 dropout、参数在 epoch 内变化、对小批次求平均）与记录的 validation loss（整个划分、`eval()`）口径不同；第 25 个 epoch 时前者为 0.092，`eval()` 口径为 0.058。
+  - *检验过*：更小的或线性分类头、dropout 0.5、weight decay 1e-2、学习率降为 1/10 都能缩小训练-验证差距（线性头 ROC-AUC 差距 0.46 → 0.20），但没有提高验证 Macro-F1 或 ROC-AUC；8 种分类头下融合都低于纯图像（24 对 seed 中只有 1 对融合更高）。过拟合确实存在，但扫描结果不支持它是融合没有提升的主要原因。
 - **纯文字连训练集都几乎拟合不了**：第 30 个 epoch 时 train loss 仍为 0.61。
   - **以下只是描述，不是原因**：L2 归一化后的冻结 [CLS] 向量共享一个主导的平均方向，精确的两两平均余弦为 0.897（平均向量范数 0.947），CLIP 图像向量为 0.268（[feature_geometry.csv](report/feature_geometry.csv)）。
   - **这个共同方向并不是 Validation 失败的原因**：特征标准化可以去掉它，之后逻辑回归探针能拟合训练集（ROC-AUC 0.67–0.76），但 Validation ROC-AUC 仍为 0.47–0.50；mean pooling（余弦 0.726）也没有更好（0.46–0.47）。
@@ -251,7 +255,7 @@ The head does read the text: about one prediction in six flips when captions are
 4. **The evaluation is noise-limited.** Compare models by 3-seed means with paired bootstrap and label-permutation tests, not by one run's best epoch. Differences below about 0.03–0.04 cannot be resolved on 699 validation memes.
 5. **Recommended next steps** (post-Oct 14, still validation-only):
    - Give the text side a chance to carry signal: fine-tune at least the last DistilBERT layers, or try another text representation. CLIP's text encoder is an untested option.
-   - Reduce overfitting with a lower learning rate and stronger regularization. Validation loss is uninformative here (its minimum is at epoch 1, ≈ ln 2). Use a pre-registered fixed epoch budget or a smoothed Macro-F1 criterion instead, and record it as a team decision if it replaces D10.
+   - Lower capacity and stronger regularization were tried (§7, [overfitting/](overfitting/README.md)): they shrink the train−validation gap but do not raise validation scores or let fusion beat image only, so they are not a fix on their own. Validation loss is uninformative for selection (minimum at epoch 1, ≈ ln 2); a pre-registered fixed epoch budget or a smoothed Macro-F1 criterion would reduce selection optimism, recorded as a team decision if it replaces D10.
    - Report label-permutation p and the 3-seed mean for every model.
    - Repeat the shuffle and mean-replacement diagnostic on each new model and add OCR-noise perturbations.
    - Look at label noise: 4 of 16 reviewed labels are debatable.
@@ -263,7 +267,7 @@ The head does read the text: about one prediction in six flips when captions are
 4. **评估受噪声限制**：比较模型请用 3 个 seed 的均值，并配合配对 bootstrap 和标签置换检验，而不是单次实验的最佳 epoch；699 张 Validation 梗图无法分辨约 0.03–0.04 以下的差异。
 5. **建议的下一步**（10月14日之后，仍只用 Validation）：
    - 让文字端有机会带来信号：至少微调 DistilBERT 的最后几层，或尝试其他文字表示（CLIP 文字编码器是尚未测试的选项）。
-   - 用更低学习率和更强正则化缓解过拟合。validation loss 在这里没有参考价值（最低点在第 1 个 epoch，≈ ln 2），改用预先确定的固定 epoch 数或平滑后的 Macro-F1 准则；若替代 D10，需记录为团队决定。
+   - 已尝试更小容量和更强正则（§7，[overfitting/](overfitting/README.md)）：它们能缩小训练-验证差距，但不能提高验证分数，也不能让融合超过纯图像，因此单靠它们不能解决问题。validation loss 不适合用于选择（最低点在第 1 个 epoch，≈ ln 2）；预先确定的固定 epoch 数或平滑后的 Macro-F1 准则可减少选择偏乐观，若替代 D10，需记录为团队决定。
    - 每个模型都报告标签置换 p 和 3 个 seed 均值。
    - 对每个新模型重复打乱/均值替换诊断，并加入 OCR 噪声扰动。
    - 检查标签噪声：人工核对的 16 个标签中有 4 个存疑。
@@ -295,4 +299,5 @@ The head does read the text: about one prediction in six flips when captions are
 | [report/linear_probes.csv](report/linear_probes.csv), [report/feature_geometry.csv](report/feature_geometry.csv), [report/tf32_emulation.json](report/tf32_emulation.json) | standardized probes, exact feature anisotropy, TF32 emulation check |
 | [report/dataset_stats.csv](report/dataset_stats.csv), [report/feature_agreement.json](report/feature_agreement.json) | data; CPU vs CUDA features |
 | [report/stats_summary.json](report/stats_summary.json) | everything above, plus reproduction and end-to-end check details |
+| [overfitting/](overfitting/README.md) | same-parameter train/validation scoring per epoch for the recorded runs, and the head capacity / regularization sweep (`python -m src.evaluation.overfitting_diagnostic`) |
 | `src/evaluation/results_report.py` | regenerates all of it (about 1–2 min on CPU; needs the caches and checkpoints listed in [docs/Multimodal_Assets.md](../../docs/Multimodal_Assets.md)) |

@@ -1,4 +1,4 @@
-"""Step 7: look at what a model gets right and wrong (image runs by default, or --task multimodal).
+"""Step 7: look at what a model gets right and wrong (image or multimodal run; task detected).
 
 Picks the most CONFIDENT examples in each cell of the confusion matrix and draws them as
 contact sheets. Each thumbnail is the ORIGINAL image with a box showing the square that
@@ -6,9 +6,10 @@ CLIP's center crop actually keeps, so you can see when caption text was cut off.
 Also prints a few simple checks (tall images, long captions) to test hunches with numbers.
 
 Usage (repo root, MEMOTION_DATA_DIR set):
-    python -m src.evaluation.error_analysis --run_id 20261001_clip_vitb32_seed42
-    python -m src.evaluation.error_analysis --run_id 20261001_clip_vitb32_seed42 --n 12
-    python -m src.evaluation.error_analysis --task multimodal --run_id 20261016_distilbert_clip_seed42
+    python -m src.evaluation.error_analysis --run_id 20261006_code_fixes_validation_v2
+    python -m src.evaluation.error_analysis --run_id 20261006_code_fixes_validation_v2 --n 12
+    python -m src.evaluation.error_analysis --run_id 20261016_distilbert_clip_seed42
+(error_analysis/ shows dataset images and captions; it is git-ignored, keep it local)
 
 Writes outputs/<task>/<run_id>/error_analysis/:
     false_positive.png   true 0, predicted 1  (model sure it is sarcastic, it is not)
@@ -132,7 +133,7 @@ def main(argv=None):
     found = [t for t in tasks if (Path("outputs") / t / args.run_id / "predictions_validation.csv").is_file()]
     if len(found) != 1:
         raise SystemExit(f"no unique outputs/<task>/{args.run_id}/predictions_validation.csv "
-                         f"(found {found or 'none'}); pass --task")
+                         f"(found {found or 'none'})" + ("" if args.task else "; pass --task"))
     run_dir = Path("outputs") / found[0] / args.run_id
     pred = pd.read_csv(run_dir / "predictions_validation.csv")
     out_dir = run_dir / "error_analysis"

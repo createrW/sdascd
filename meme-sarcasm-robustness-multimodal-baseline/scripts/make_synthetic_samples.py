@@ -1,6 +1,6 @@
 """Write the committable synthetic sample set in data/samples/ (no dataset content).
 
-The real Memotion images and captions are never committed (team README). These rows only mimic
+The dataset itself is never committed (team README 9.4). These rows only mimic
 the dataset's folder layout and metadata.csv columns, so the loader, the predictor and the API can
 be smoke-tested on a machine without the dataset:
 

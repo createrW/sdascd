@@ -18,7 +18,7 @@ try {
     $featureDir = if ($Reextract) { "data/processed/features/$RunId" } else { $FeaturesDir }
     # Either cache location works: data/processed/features/<name> or the old features/<name>.
     if (-not $Reextract -and -not (Test-Path -LiteralPath $featureDir)) {
-        $normalized = $featureDir -replace '\\', '/'
+        $normalized = ($featureDir -replace '\\', '/') -replace '^\./', ''
         if ($normalized.StartsWith('data/processed/') -and (Test-Path -LiteralPath $normalized.Substring(15) -PathType Container)) { $featureDir = $normalized.Substring(15) }
         elseif (Test-Path -LiteralPath "data/processed/$normalized" -PathType Container) { $featureDir = "data/processed/$normalized" }
     }

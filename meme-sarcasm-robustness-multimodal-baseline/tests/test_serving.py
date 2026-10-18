@@ -100,6 +100,8 @@ class PredictorTests(TinyModelMixin, unittest.TestCase):
             self.predictor.forward(["a"], [])
         with self.assertRaises(ValueError):
             self.predictor.forward([], [])
+        with self.assertRaises(ValueError):
+            self.predictor.forward(["a"])            # neither images nor pixel_values
 
     def test_image_inputs_paths_bytes_and_pil_agree(self):
         path = SAMPLES / "test/images/test_000002.png"
@@ -171,11 +173,10 @@ class AppTests(TinyModelMixin, unittest.TestCase):
 
     def test_bad_requests_are_rejected(self):
         not_image = base64.b64encode(b"definitely not an image").decode()
-        eps = base64.b64encode(b"%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 10 10\nshowpage\n").decode()
         b64 = lambda raw: base64.b64encode(raw).decode()  # noqa: E731
         thin = io.BytesIO(); Image.new("RGB", (100, 2)).save(thin, format="PNG")
         cases = [
-            ("/predict", {"text": "x", "image_base64": eps}, 400),                     # EPS refused
+            ("/predict", {"text": "x", "image_base64": b64(header_only_png(20000, 20000))}, 413),  # above Pillow's cap
             ("/predict", {"text": "x", "image_base64": b64(header_only_png(9000, 9000))}, 413),
             ("/predict", {"text": "x", "image_base64": b64(thin.getvalue())}, 413),   # aspect 50
             ("/predict", {"text": "x", "image_base64": "%%%not base64%%%"}, 400),
@@ -210,6 +211,38 @@ class AppTests(TinyModelMixin, unittest.TestCase):
                                                               "image_base64": data})
                 self.assertEqual(response.status_code, 200, response.text)
                 self.assertEqual(response.json(), reference)
+
+    def test_only_listed_formats_are_decoded(self):
+        eps = b"%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 10 10\nshowpage\n"
+        tiff = io.BytesIO(); Image.new("RGB", (40, 40), (9, 99, 199)).save(tiff, format="TIFF")
+        for name, raw in (("EPS", eps), ("TIFF", tiff.getvalue())):  # TIFF decodes fine in Pillow
+            with self.subTest(format=name):
+                response = self.client.post("/predict", json={"text": "x",
+                                                              "image_base64": base64.b64encode(raw).decode()})
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("JPEG/PNG/GIF/WEBP/BMP", response.json()["detail"])
+
+    def test_batch_releases_each_decoded_image_before_the_next(self):
+        import gc
+        import weakref
+        from src.serving import app as app_module
+        seen, alive_before = [], []
+        original = app_module.to_rgb
+
+        def spy(image):
+            gc.collect()
+            alive_before.append(sum(ref() is not None for ref in seen))
+            seen.append(weakref.ref(image))
+            return original(image)
+
+        items = [{"text": "x", "image_base64": png_base64((20 * i, 40, 60), size=(300, 300))} for i in range(3)]
+        app_module.to_rgb = spy
+        try:
+            response = self.client.post("/predict/batch", json={"items": items})
+        finally:
+            app_module.to_rgb = original
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(alive_before, [0, 0, 0])   # earlier source images already freed
 
     def test_without_a_model_the_api_answers_503(self):
         client = TestClient(create_app(serving_config=str(self.serving_config)))  # no startup hook

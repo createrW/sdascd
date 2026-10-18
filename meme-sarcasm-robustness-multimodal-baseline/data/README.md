@@ -9,8 +9,8 @@
 **Dataset.** Point `MEMOTION_DATA_DIR` at the dataset root, or unpack it into
 `data/raw/MMSoc_Memotion_exported/`, which is used when the variable is unset. Never commit the
 dataset, its zip or its image files (team README 9.4); `data/raw/` and `data/processed/` are
-git-ignored. (The only dataset-derived files in Git are the curated manual-review sheets listed in
-the main README.)
+git-ignored. (Dataset-derived review evidence that the groups keep in Git on purpose is listed
+under "Rules" in the main README.)
 
 **Feature caches.** `python -m src.features.feature_engineering text|image` writes to
 `data/processed/features/` by default. The shared cache zips (docs/Image_Cloud_Assets.md,
@@ -22,11 +22,13 @@ unzip Image_Features_CLIP_ViTB32_20261006.zip -d data/processed/
 unzip Text_Features_DistilBERT_20261016.zip   -d data/processed/
 ```
 
-Checkpoints and run configs recorded before this layout name `features/<name>`. Every reader of a
-cache (`src/features/cache.py::resolve_features_dir`, used by the loaders, the trainer's records,
-`results_report.py`, `check_tf32_emulation.py` and `reproduce_image.ps1`) accepts either location:
+Checkpoints and run configs recorded before this layout name `features/<name>`. The loaders, the
+trainer's records, `evaluate.py`, `results_report.py` and `check_tf32_emulation.py` (all through
+`src/features/cache.py::resolve_features_dir`) and `reproduce_image.ps1` accept either location:
 `features/<name>` falls back to `data/processed/features/<name>` and the other way round. So old
-commands, shipped heads and archives unpacked at the repository root still work.
+commands, shipped heads and archives unpacked at the repository root still work. Exceptions:
+`scripts/compare_feature_caches.py` takes the two paths literally, and `notebooks/eda.ipynb` reads
+only `data/processed/features/`.
 
 | Cache (`data/processed/features/...`) | Encoder | Splits | Produced by |
 |---|---|---|---|

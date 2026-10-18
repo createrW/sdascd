@@ -4,7 +4,8 @@ Picks validation samples from a run's predictions (default 4 each of TP, TN, FP,
 draws image + caption + labels in one grid, and writes a CSV with empty columns for the
 reviewer to fill in.
 
-    python -m src.evaluation.review_samples --run_id 20261016_distilbert_clip_seed42
+    python -m src.evaluation.review_samples --run_id 20261016_distilbert_clip_seed42 \
+        --out_dir outputs/multimodal/20261016_distilbert_clip_seed42/review_mine
 
 Writes outputs/multimodal/<run_id>/review/{review_grid.png, manual_review.csv}, or --out_dir
 (the shipped reference run already has review/; existing files are never overwritten).

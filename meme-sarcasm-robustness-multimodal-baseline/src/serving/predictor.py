@@ -42,7 +42,7 @@ DEFAULT_SERVING_CONFIG = "configs/deploy/serving.yaml"
 def as_rgb_image(image) -> Image.Image:
     """PIL image, file path or encoded bytes -> RGB PIL image (same conversion as training)."""
     if isinstance(image, Image.Image):
-        return to_rgb(image)
+        return image if image.mode == "RGB" else to_rgb(image)  # RGB already: no extra full-size copy
     if isinstance(image, (bytes, bytearray)):
         with Image.open(io.BytesIO(image)) as im:
             return to_rgb(im)
@@ -115,6 +115,8 @@ class MultimodalPredictor:
 
         Give either raw `images` (paths, bytes or PIL images) or precomputed `pixel_values`.
         """
+        if images is None and pixel_values is None:
+            raise ValueError("give images or pixel_values")
         n_images = len(images if pixel_values is None else pixel_values)
         if len(texts) != n_images or not texts:
             raise ValueError("need the same, nonzero number of texts and images")
